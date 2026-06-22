@@ -27,11 +27,32 @@ import { SceneThumbnail } from "@/components/scene-thumbnail";
 import { ShareSceneDialog } from "@/components/share-dialog";
 import { useTheme } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -229,7 +250,9 @@ function DashboardContent() {
                 variant={activeFolderId === null ? "secondary" : "ghost"}
                 onClick={() => setActiveFolderId(null)}
               >
-                <Sparkles className={activeFolderId === null ? "text-primary" : ""} />
+                <Sparkles
+                  className={activeFolderId === null ? "text-primary" : ""}
+                />
                 All scenes
                 <span className="ml-auto font-mono text-xs text-muted-foreground">
                   {library.scenes.length}
@@ -255,7 +278,10 @@ function DashboardContent() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
                 {folderPath.map((part, index) => (
-                  <span key={`${part}-${index}`} className="inline-flex items-center gap-1">
+                  <span
+                    key={`${part}-${index}`}
+                    className="inline-flex items-center gap-1"
+                  >
                     {index > 0 ? <ChevronRight className="size-3" /> : null}
                     {part}
                   </span>
@@ -266,7 +292,8 @@ function DashboardContent() {
                   {activeFolderId ? folderPath.at(-1) : "All scenes"}
                 </h1>
                 <span className="font-mono text-xs text-muted-foreground">
-                  {visibleScenes.length} {visibleScenes.length === 1 ? "scene" : "scenes"}
+                  {visibleScenes.length}{" "}
+                  {visibleScenes.length === 1 ? "scene" : "scenes"}
                 </span>
               </div>
             </div>
@@ -299,7 +326,9 @@ function DashboardContent() {
             <section>
               <div className="mb-3 flex items-center gap-2">
                 <h2 className="text-sm font-semibold">Folders</h2>
-                <Badge variant="secondary" className="font-mono">{childFolders.length}</Badge>
+                <Badge variant="secondary" className="font-mono">
+                  {childFolders.length}
+                </Badge>
               </div>
               {childFolders.length ? (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -321,7 +350,10 @@ function DashboardContent() {
                               backgroundColor: `color-mix(in oklch, ${folderColor(index)} 16%, transparent)`,
                             }}
                           >
-                            <Folder className="size-5" style={{ color: folderColor(index) }} />
+                            <Folder
+                              className="size-5"
+                              style={{ color: folderColor(index) }}
+                            />
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-medium">
@@ -349,7 +381,9 @@ function DashboardContent() {
             <section>
               <div className="mb-3 flex items-center gap-2">
                 <h2 className="text-sm font-semibold">Scenes</h2>
-                <Badge variant="secondary" className="font-mono">{visibleScenes.length}</Badge>
+                <Badge variant="secondary" className="font-mono">
+                  {visibleScenes.length}
+                </Badge>
               </div>
               {visibleScenes.length ? (
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -697,7 +731,9 @@ function FolderActions({ folderId }: { folderId: string }) {
       />
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle className="font-display">Delete this folder?</AlertDialogTitle>
+          <AlertDialogTitle className="font-display">
+            Delete this folder?
+          </AlertDialogTitle>
           <AlertDialogDescription>
             This also deletes nested folders and every scene inside them. This
             can&apos;t be undone.
@@ -757,7 +793,9 @@ function SceneActions({ sceneId }: { sceneId: string }) {
       </DropdownMenu>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle className="font-display">Delete this scene?</AlertDialogTitle>
+          <AlertDialogTitle className="font-display">
+            Delete this scene?
+          </AlertDialogTitle>
           <AlertDialogDescription>
             The latest saved drawing for this scene will be removed. This
             can&apos;t be undone.

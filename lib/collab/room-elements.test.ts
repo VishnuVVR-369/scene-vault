@@ -11,7 +11,12 @@ import {
 describe("roomRowsToElements", () => {
   it("returns the stored element data", () => {
     const rows = [
-      { elementId: "a", data: { id: "a", version: 1 }, version: 1, versionNonce: 1 },
+      {
+        elementId: "a",
+        data: { id: "a", version: 1 },
+        version: 1,
+        versionNonce: 1,
+      },
     ];
     expect(roomRowsToElements(rows)).toEqual([{ id: "a", version: 1 }]);
   });
@@ -28,8 +33,12 @@ describe("elementsSignature", () => {
 
 describe("reconcileRemote", () => {
   it("reports changed when reconciliation differs from local", () => {
-    const local: SceneElementLike[] = [{ id: "a", version: 1, versionNonce: 1 }];
-    const remote: SceneElementLike[] = [{ id: "a", version: 2, versionNonce: 1 }];
+    const local: SceneElementLike[] = [
+      { id: "a", version: 1, versionNonce: 1 },
+    ];
+    const remote: SceneElementLike[] = [
+      { id: "a", version: 2, versionNonce: 1 },
+    ];
     const result = reconcileRemote({
       localElements: local,
       remoteElements: remote,
@@ -41,7 +50,9 @@ describe("reconcileRemote", () => {
   });
 
   it("reports no change when reconciliation equals local", () => {
-    const local: SceneElementLike[] = [{ id: "a", version: 2, versionNonce: 1 }];
+    const local: SceneElementLike[] = [
+      { id: "a", version: 2, versionNonce: 1 },
+    ];
     const result = reconcileRemote({
       localElements: local,
       remoteElements: local,

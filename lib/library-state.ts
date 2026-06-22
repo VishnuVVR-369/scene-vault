@@ -15,7 +15,9 @@ import { normalizeSceneBundle } from "@/lib/excalidraw-scene";
 
 const DEFAULT_OWNER_ID = "local-user";
 
-export function createInitialLibraryState(ownerId = DEFAULT_OWNER_ID): LibraryState {
+export function createInitialLibraryState(
+  ownerId = DEFAULT_OWNER_ID,
+): LibraryState {
   return libraryStateSchema.parse({
     ownerId,
     folders: [],
@@ -53,7 +55,11 @@ export function createFolder(
   });
 }
 
-export function renameFolder(state: LibraryState, input: unknown, now = Date.now()) {
+export function renameFolder(
+  state: LibraryState,
+  input: unknown,
+  now = Date.now(),
+) {
   const parsed = renameFolderInputSchema.parse(input);
   assertFolderExists(state, parsed.id);
   return libraryStateSchema.parse({
@@ -66,14 +72,21 @@ export function renameFolder(state: LibraryState, input: unknown, now = Date.now
   });
 }
 
-export function moveFolder(state: LibraryState, input: unknown, now = Date.now()) {
+export function moveFolder(
+  state: LibraryState,
+  input: unknown,
+  now = Date.now(),
+) {
   const parsed = moveFolderInputSchema.parse(input);
   assertFolderExists(state, parsed.id);
   assertParentFolderExists(state, parsed.parentFolderId);
   if (parsed.parentFolderId === parsed.id) {
     throw new Error("A folder cannot be moved into itself.");
   }
-  if (parsed.parentFolderId && isDescendantFolder(state, parsed.parentFolderId, parsed.id)) {
+  if (
+    parsed.parentFolderId &&
+    isDescendantFolder(state, parsed.parentFolderId, parsed.id)
+  ) {
     throw new Error("A folder cannot be moved into one of its descendants.");
   }
   return libraryStateSchema.parse({
@@ -86,14 +99,20 @@ export function moveFolder(state: LibraryState, input: unknown, now = Date.now()
   });
 }
 
-export function deleteFolder(state: LibraryState, folderId: string): LibraryState {
+export function deleteFolder(
+  state: LibraryState,
+  folderId: string,
+): LibraryState {
   assertFolderExists(state, folderId);
   const folderIdsToDelete = new Set([folderId]);
   let changed = true;
   while (changed) {
     changed = false;
     for (const folder of state.folders) {
-      if (folder.parentFolderId && folderIdsToDelete.has(folder.parentFolderId)) {
+      if (
+        folder.parentFolderId &&
+        folderIdsToDelete.has(folder.parentFolderId)
+      ) {
         if (!folderIdsToDelete.has(folder.id)) {
           folderIdsToDelete.add(folder.id);
           changed = true;
@@ -104,19 +123,27 @@ export function deleteFolder(state: LibraryState, folderId: string): LibraryStat
 
   const scenesToDelete = new Set(
     state.scenes
-      .filter((scene) => scene.folderId && folderIdsToDelete.has(scene.folderId))
+      .filter(
+        (scene) => scene.folderId && folderIdsToDelete.has(scene.folderId),
+      )
       .map((scene) => scene.id),
   );
 
   return libraryStateSchema.parse({
     ...state,
-    folders: state.folders.filter((folder) => !folderIdsToDelete.has(folder.id)),
+    folders: state.folders.filter(
+      (folder) => !folderIdsToDelete.has(folder.id),
+    ),
     scenes: state.scenes.filter((scene) => !scenesToDelete.has(scene.id)),
     bundles: Object.fromEntries(
-      Object.entries(state.bundles).filter(([sceneId]) => !scenesToDelete.has(sceneId)),
+      Object.entries(state.bundles).filter(
+        ([sceneId]) => !scenesToDelete.has(sceneId),
+      ),
     ),
     thumbnails: Object.fromEntries(
-      Object.entries(state.thumbnails).filter(([sceneId]) => !scenesToDelete.has(sceneId)),
+      Object.entries(state.thumbnails).filter(
+        ([sceneId]) => !scenesToDelete.has(sceneId),
+      ),
     ),
   });
 }
@@ -153,7 +180,11 @@ export function createScene(
   });
 }
 
-export function updateScene(state: LibraryState, input: unknown, now = Date.now()) {
+export function updateScene(
+  state: LibraryState,
+  input: unknown,
+  now = Date.now(),
+) {
   const parsed = updateSceneInputSchema.parse(input);
   assertSceneExists(state, parsed.id);
   if (parsed.folderId !== undefined) {
@@ -166,7 +197,8 @@ export function updateScene(state: LibraryState, input: unknown, now = Date.now(
         ? {
             ...scene,
             title: parsed.title ?? scene.title,
-            folderId: parsed.folderId === undefined ? scene.folderId : parsed.folderId,
+            folderId:
+              parsed.folderId === undefined ? scene.folderId : parsed.folderId,
             updatedAt: now,
           }
         : scene,
@@ -174,7 +206,10 @@ export function updateScene(state: LibraryState, input: unknown, now = Date.now(
   });
 }
 
-export function deleteScene(state: LibraryState, sceneId: string): LibraryState {
+export function deleteScene(
+  state: LibraryState,
+  sceneId: string,
+): LibraryState {
   assertSceneExists(state, sceneId);
   const bundles = { ...state.bundles };
   delete bundles[sceneId];
@@ -229,7 +264,9 @@ export function duplicateScene(
     scenes: [...state.scenes, copy],
     bundles: {
       ...state.bundles,
-      [id]: normalizeSceneBundle(state.bundles[sceneId] ?? createEmptySceneBundle()),
+      [id]: normalizeSceneBundle(
+        state.bundles[sceneId] ?? createEmptySceneBundle(),
+      ),
     },
     thumbnails: state.thumbnails[sceneId]
       ? { ...state.thumbnails, [id]: state.thumbnails[sceneId] }
@@ -270,7 +307,9 @@ export function getFolderPath(state: LibraryState, folderId: string | null) {
   if (!folderId) {
     return ["All scenes"];
   }
-  const foldersById = new Map(state.folders.map((folder) => [folder.id, folder]));
+  const foldersById = new Map(
+    state.folders.map((folder) => [folder.id, folder]),
+  );
   const path: string[] = [];
   let cursor: string | null = folderId;
   while (cursor) {
@@ -284,7 +323,11 @@ export function getFolderPath(state: LibraryState, folderId: string | null) {
   return path;
 }
 
-export function filterScenes(state: LibraryState, query: string, folderId: string | null) {
+export function filterScenes(
+  state: LibraryState,
+  query: string,
+  folderId: string | null,
+) {
   const normalized = query.trim().toLowerCase();
   return state.scenes.filter((scene) => {
     const matchesFolder = folderId === null || scene.folderId === folderId;
@@ -294,7 +337,9 @@ export function filterScenes(state: LibraryState, query: string, folderId: strin
     if (!normalized) {
       return true;
     }
-    const folderPath = getFolderPath(state, scene.folderId).join(" / ").toLowerCase();
+    const folderPath = getFolderPath(state, scene.folderId)
+      .join(" / ")
+      .toLowerCase();
     return (
       scene.title.toLowerCase().includes(normalized) ||
       folderPath.includes(normalized)
@@ -307,7 +352,9 @@ export function isDescendantFolder(
   folderId: string,
   ancestorId: string,
 ) {
-  const foldersById = new Map(state.folders.map((folder) => [folder.id, folder]));
+  const foldersById = new Map(
+    state.folders.map((folder) => [folder.id, folder]),
+  );
   let cursor = foldersById.get(folderId)?.parentFolderId ?? null;
   while (cursor) {
     if (cursor === ancestorId) {
@@ -334,7 +381,10 @@ function assertSceneExists(state: LibraryState, sceneId: string) {
   return scene;
 }
 
-function assertParentFolderExists(state: LibraryState, folderId: string | null) {
+function assertParentFolderExists(
+  state: LibraryState,
+  folderId: string | null,
+) {
   if (folderId === null) {
     return;
   }

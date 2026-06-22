@@ -5,7 +5,11 @@ import { Loader2, Pencil, Square, Wifi, WifiOff } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ExcalidrawCanvas } from "@/components/excalidraw-canvas";
-import { useRoom, type Participant, type SnapshotBundle } from "@/components/collab/use-room";
+import {
+  useRoom,
+  type Participant,
+  type SnapshotBundle,
+} from "@/components/collab/use-room";
 import { LogoMark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +23,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { COLLAB_COLORS, colorForId } from "@/lib/collab/colors";
-import { loadGuestIdentity, saveGuestIdentity, type CollabIdentity } from "@/lib/collab/identity";
+import {
+  loadGuestIdentity,
+  saveGuestIdentity,
+  type CollabIdentity,
+} from "@/lib/collab/identity";
 import { cn } from "@/lib/utils";
 import type { SceneBundle } from "@/lib/domain";
 
@@ -47,7 +55,9 @@ function Avatar({ participant }: { participant: Participant }) {
     <div
       className="flex size-8 items-center justify-center rounded-full border-2 border-background text-xs font-semibold text-white shadow-sm"
       style={{ backgroundColor: participant.color }}
-      title={participant.isSelf ? `${participant.name} (you)` : participant.name}
+      title={
+        participant.isSelf ? `${participant.name} (you)` : participant.name
+      }
     >
       {initials(participant.name)}
     </div>
@@ -65,7 +75,11 @@ function StatusPill({ status, count }: { status: string; count: number }) {
       aria-live="polite"
     >
       {live ? <Wifi className="size-3.5" /> : <WifiOff className="size-3.5" />}
-      {live ? `Live · ${count}` : status === "error" ? "Offline" : "Connecting…"}
+      {live
+        ? `Live · ${count}`
+        : status === "error"
+          ? "Offline"
+          : "Connecting…"}
     </span>
   );
 }
@@ -93,16 +107,22 @@ function GuestIdentityEditor({
           setOpen(true);
         }}
       >
-        <span className="size-3 rounded-full" style={{ backgroundColor: identity.color }} />
+        <span
+          className="size-3 rounded-full"
+          style={{ backgroundColor: identity.color }}
+        />
         <span className="max-w-28 truncate">{identity.name}</span>
         <Pencil className="size-3" />
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="font-display">Your collaborator identity</DialogTitle>
+            <DialogTitle className="font-display">
+              Your collaborator identity
+            </DialogTitle>
             <DialogDescription>
-              How you appear to others in this room. Visible to everyone with the link.
+              How you appear to others in this room. Visible to everyone with
+              the link.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-1">
@@ -125,7 +145,9 @@ function GuestIdentityEditor({
                     aria-label={`Pick color ${option}`}
                     className={cn(
                       "size-7 rounded-full border-2 transition",
-                      color === option ? "border-foreground" : "border-transparent",
+                      color === option
+                        ? "border-foreground"
+                        : "border-transparent",
                     )}
                     style={{ backgroundColor: option }}
                     onClick={() => setColor(option)}
@@ -196,7 +218,8 @@ export function CollaborativeCanvas(props: CollaborativeCanvasProps) {
           <div>
             <h1 className="font-display text-xl font-bold">Access ended</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              This collaboration link was disabled or reset. Ask the owner for a new one.
+              This collaboration link was disabled or reset. Ask the owner for a
+              new one.
             </p>
           </div>
         </div>
@@ -260,7 +283,9 @@ export function CollaborativeCanvas(props: CollaborativeCanvasProps) {
                   await room.stopRoom();
                   onStopped?.();
                 } catch (err) {
-                  setStopError(err instanceof Error ? err.message : "Could not stop room");
+                  setStopError(
+                    err instanceof Error ? err.message : "Could not stop room",
+                  );
                 } finally {
                   setStopping(false);
                 }

@@ -31,7 +31,11 @@ export function RoomControls({
   const [error, setError] = useState<string | null>(null);
   const startRoom = useMutation(api.collab.startRoom);
   const queryArgs = useMemo(
-    () => ({ sceneId: sceneId as Id<"scenes">, ...(token ? { token } : {}) }) as const,
+    () =>
+      ({
+        sceneId: sceneId as Id<"scenes">,
+        ...(token ? { token } : {}),
+      }) as const,
     [sceneId, token],
   );
   const roomView = useQuery(api.collab.getRoomView, queryArgs);
@@ -45,7 +49,9 @@ export function RoomControls({
   const active = Boolean(authorizedRoom?.active);
   const canStart = Boolean(allowStart && authorizedRoom?.canStart);
   const canJoin = active;
-  const isDisabled = Boolean(disabled || busy || loading || (!canStart && !canJoin));
+  const isDisabled = Boolean(
+    disabled || busy || loading || (!canStart && !canJoin),
+  );
   const label = loading ? "Room..." : canStart ? "Start room" : "Join room";
   const Icon = busy || loading ? Loader2 : canStart ? Radio : Users;
   const title =

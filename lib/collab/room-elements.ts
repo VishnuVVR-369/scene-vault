@@ -26,7 +26,9 @@ export type ReconcileFn = (
   appState: unknown,
 ) => SceneElementLike[];
 
-export function roomRowsToElements(rows: readonly RoomElementRow[]): SceneElementLike[] {
+export function roomRowsToElements(
+  rows: readonly RoomElementRow[],
+): SceneElementLike[] {
   return rows.map((row) => row.data as SceneElementLike);
 }
 
@@ -35,7 +37,9 @@ export function roomRowsToElements(rows: readonly RoomElementRow[]): SceneElemen
  * scenes with the same signature render identically, so callers can skip a
  * redundant `updateScene`.
  */
-export function elementsSignature(elements: readonly SceneElementLike[]): string {
+export function elementsSignature(
+  elements: readonly SceneElementLike[],
+): string {
   return elements
     .map((el) => `${el.id}@${el.version}:${el.versionNonce ?? 0}`)
     .join(",");
@@ -51,16 +55,28 @@ export function reconcileRemote(args: {
   appState: unknown;
   reconcile: ReconcileFn;
 }): { elements: SceneElementLike[]; changed: boolean } {
-  const reconciled = args.reconcile(args.localElements, args.remoteElements, args.appState);
-  const changed = elementsSignature(args.localElements) !== elementsSignature(reconciled);
+  const reconciled = args.reconcile(
+    args.localElements,
+    args.remoteElements,
+    args.appState,
+  );
+  const changed =
+    elementsSignature(args.localElements) !== elementsSignature(reconciled);
   return { elements: reconciled, changed };
 }
 
 /** File ids referenced by image elements, so peers can lazy-load missing blobs. */
-export function collectFileIds(elements: readonly SceneElementLike[]): string[] {
+export function collectFileIds(
+  elements: readonly SceneElementLike[],
+): string[] {
   const ids = new Set<string>();
   for (const el of elements) {
-    if (el.type === "image" && typeof el.fileId === "string" && el.fileId.length > 0 && !el.isDeleted) {
+    if (
+      el.type === "image" &&
+      typeof el.fileId === "string" &&
+      el.fileId.length > 0 &&
+      !el.isDeleted
+    ) {
       ids.add(el.fileId);
     }
   }

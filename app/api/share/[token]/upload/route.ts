@@ -3,7 +3,10 @@ import { ZodError } from "zod";
 import { r2UploadRequestSchema } from "@/lib/domain";
 import { createSceneUploadUrl } from "@/lib/r2";
 import { noStoreJson } from "@/lib/scene-storage-access";
-import { referrerSafeHeaders, requireSharedSceneAccess } from "@/lib/shared-scene-access";
+import {
+  referrerSafeHeaders,
+  requireSharedSceneAccess,
+} from "@/lib/shared-scene-access";
 
 type ShareRouteContext = {
   params: Promise<{ token: string }>;

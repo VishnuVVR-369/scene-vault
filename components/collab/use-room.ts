@@ -102,7 +102,15 @@ export type UseRoomResult = {
 };
 
 export function useRoom(args: UseRoomArgs): UseRoomResult {
-  const { enabled, sceneId, token, identity, canSnapshot, onSnapshot, onLoadFiles } = args;
+  const {
+    enabled,
+    sceneId,
+    token,
+    identity,
+    canSnapshot,
+    onSnapshot,
+    onLoadFiles,
+  } = args;
 
   const joinRoom = useMutation(api.collab.joinRoom);
   const completeHydration = useMutation(api.collab.completeHydration);
@@ -115,7 +123,10 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
   const queryArgs = useMemo(
     () =>
       enabled
-        ? ({ sceneId: sceneId as Id<"scenes">, ...(token ? { token } : {}) } as const)
+        ? ({
+            sceneId: sceneId as Id<"scenes">,
+            ...(token ? { token } : {}),
+          } as const)
         : "skip",
     [enabled, sceneId, token],
   );
@@ -123,14 +134,19 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
   const roomElements = useQuery(api.collab.getRoomElements, queryArgs);
   const presence = useQuery(api.collab.getPresence, queryArgs);
 
-  const [status, setStatus] = useState<RoomStatus>(() => (enabled ? "connecting" : "idle"));
+  const [status, setStatus] = useState<RoomStatus>(() =>
+    enabled ? "connecting" : "idle",
+  );
   const [roomSessionId, setRoomSessionId] = useState<string | null>(null);
   // A periodic tick so departed cursors fade even if no one else moves.
   const [nowTick, setNowTick] = useState(() => Date.now());
 
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const excalRef = useRef<ExcalidrawModule | null>(null);
-  const sessionRef = useRef<{ roomSessionId: string; sessionSecret: string } | null>(null);
+  const sessionRef = useRef<{
+    roomSessionId: string;
+    sessionSecret: string;
+  } | null>(null);
   const identityRef = useRef(identity);
   const tokenRef = useRef(token);
 
@@ -144,7 +160,11 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
   const flushPromiseRef = useRef<Promise<void> | null>(null);
 
   const selectionRef = useRef<string[]>([]);
-  const cursorRef = useRef<{ x: number; y: number; button: "up" | "down" } | null>(null);
+  const cursorRef = useRef<{
+    x: number;
+    y: number;
+    button: "up" | "down";
+  } | null>(null);
   const cursorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -290,7 +310,8 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
         versionNonce: row.versionNonce,
       });
     }
-    const local = editor.getSceneElementsIncludingDeleted() as unknown as SceneElementLike[];
+    const local =
+      editor.getSceneElementsIncludingDeleted() as unknown as SceneElementLike[];
     const { elements, changed } = reconcileRemote({
       localElements: local,
       remoteElements: remote,
@@ -347,7 +368,9 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
     if (!editor || !presence) {
       return;
     }
-    const active = presence.filter((p) => isPresenceActive(p.lastSeenAt, nowTick));
+    const active = presence.filter((p) =>
+      isPresenceActive(p.lastSeenAt, nowTick),
+    );
     const entries = buildCollaboratorEntries(active, roomSessionId ?? "");
     const map = new Map<SocketId, Collaborator>();
     for (const entry of entries) {
@@ -369,7 +392,9 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
       return false;
     }
     const active = presence
-      .filter((p) => isPresenceActive(p.lastSeenAt, nowTick) && p.userId != null)
+      .filter(
+        (p) => isPresenceActive(p.lastSeenAt, nowTick) && p.userId != null,
+      )
       .map((p) => p.roomSessionId);
     return isSnapshotter(roomSessionId, active);
   }, [presence, nowTick, roomSessionId, canSnapshot]);
@@ -501,56 +526,64 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
   }, []);
 
   // ---- Snapshot to R2 (snapshotter only) ----------------------------------
-  const doSnapshot = useCallback(async (options?: { force?: boolean }) => {
-    const editor = apiRef.current;
-    if (!editor || !canSnapshot || (!options?.force && !isSnapshotterRef.current)) {
-      return;
-    }
-    const base = baseMutationArgs();
-    if (!base) {
-      return;
-    }
-    const elements = editor.getSceneElementsIncludingDeleted() as unknown as SceneElementLike[];
-    const sig = elementsSignature(elements);
-    if (sig === lastSnapshotSigRef.current) {
-      return;
-    }
-    const maxUpdatedAt = (roomElements ?? []).reduce(
-      (max, row) => Math.max(max, row.updatedAt ?? 0),
-      0,
-    );
-    try {
-      const hash = await onSnapshot({
-        elements,
-        appState: editor.getAppState() as unknown as Record<string, unknown>,
-        files: editor.getFiles(),
-      });
-      if (hash) {
-        const result = await markRoomSnapshot({
-          ...base,
-          snapshotHash: hash,
-          snapshotMaxUpdatedAt: maxUpdatedAt,
+  const doSnapshot = useCallback(
+    async (options?: { force?: boolean }) => {
+      const editor = apiRef.current;
+      if (
+        !editor ||
+        !canSnapshot ||
+        (!options?.force && !isSnapshotterRef.current)
+      ) {
+        return;
+      }
+      const base = baseMutationArgs();
+      if (!base) {
+        return;
+      }
+      const elements =
+        editor.getSceneElementsIncludingDeleted() as unknown as SceneElementLike[];
+      const sig = elementsSignature(elements);
+      if (sig === lastSnapshotSigRef.current) {
+        return;
+      }
+      const maxUpdatedAt = (roomElements ?? []).reduce(
+        (max, row) => Math.max(max, row.updatedAt ?? 0),
+        0,
+      );
+      try {
+        const hash = await onSnapshot({
+          elements,
+          appState: editor.getAppState() as unknown as Record<string, unknown>,
+          files: editor.getFiles(),
         });
-        if (result.marked) {
-          lastSnapshotSigRef.current = sig;
+        if (hash) {
+          const result = await markRoomSnapshot({
+            ...base,
+            snapshotHash: hash,
+            snapshotMaxUpdatedAt: maxUpdatedAt,
+          });
+          if (result.marked) {
+            lastSnapshotSigRef.current = sig;
+          } else {
+            scheduleSnapshotRetry();
+          }
         } else {
           scheduleSnapshotRetry();
         }
-      } else {
+      } catch {
+        // Stays dirty -> retried on the next change / by the next snapshotter.
         scheduleSnapshotRetry();
       }
-    } catch {
-      // Stays dirty -> retried on the next change / by the next snapshotter.
-      scheduleSnapshotRetry();
-    }
-  }, [
-    baseMutationArgs,
-    canSnapshot,
-    onSnapshot,
-    markRoomSnapshot,
-    roomElements,
-    scheduleSnapshotRetry,
-  ]);
+    },
+    [
+      baseMutationArgs,
+      canSnapshot,
+      onSnapshot,
+      markRoomSnapshot,
+      roomElements,
+      scheduleSnapshotRetry,
+    ],
+  );
 
   useEffect(() => {
     doSnapshotRef.current = () => void doSnapshot();
@@ -581,11 +614,15 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
         return;
       }
       selectionRef.current = Object.keys(appState.selectedElementIds ?? {});
-      const full = editor.getSceneElementsIncludingDeleted() as unknown as SceneElementLike[];
+      const full =
+        editor.getSceneElementsIncludingDeleted() as unknown as SceneElementLike[];
       const changed = diffElementsForBroadcast(full, knownVersionsRef.current);
       if (changed.length > 0) {
         for (const el of changed) {
-          pendingRef.current.set((el as SceneElementLike).id, el as SceneElementLike);
+          pendingRef.current.set(
+            (el as SceneElementLike).id,
+            el as SceneElementLike,
+          );
         }
         scheduleFlush();
         scheduleSnapshot();
@@ -626,7 +663,11 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
 
   const onPointerUpdate = useCallback<UseRoomResult["onPointerUpdate"]>(
     (payload) => {
-      cursorRef.current = { x: payload.pointer.x, y: payload.pointer.y, button: payload.button };
+      cursorRef.current = {
+        x: payload.pointer.x,
+        y: payload.pointer.y,
+        button: payload.button,
+      };
       if (cursorTimerRef.current) {
         return;
       }
@@ -638,15 +679,21 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
     [sendCursor],
   );
 
-  // Flush + final snapshot on unmount/tab close.
+  // Flush + final snapshot on unmount/tab close. Depends only on `enabled` and
+  // reaches the latest flush/snapshot through refs. Depending on `flush`/
+  // `doSnapshot` directly would tear this down on every roomElements update
+  // (doSnapshot re-memoizes when roomElements changes); the cleanup would then
+  // clear the pending flush timer WITHOUT resetting flushTimerRef, and
+  // scheduleFlush's `if (flushTimerRef.current) return` guard would block every
+  // subsequent flush — so only the first edit would ever reach other clients.
   useEffect(() => {
     if (!enabled) {
       return;
     }
     const onHide = () => {
-      void flush();
+      void flushRef.current();
       if (isSnapshotterRef.current) {
-        void doSnapshot();
+        void doSnapshotRef.current();
       }
     };
     window.addEventListener("pagehide", onHide);
@@ -655,15 +702,18 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
       onHide();
       if (flushTimerRef.current) {
         clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
       }
       if (snapshotTimerRef.current) {
         clearTimeout(snapshotTimerRef.current);
+        snapshotTimerRef.current = null;
       }
       if (cursorTimerRef.current) {
         clearTimeout(cursorTimerRef.current);
+        cursorTimerRef.current = null;
       }
     };
-  }, [enabled, flush, doSnapshot]);
+  }, [enabled]);
 
   return {
     status: effectiveStatus,

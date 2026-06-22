@@ -25,18 +25,27 @@ function readStorage(storage: "session" | "local", key: string): string | null {
     return null;
   }
   try {
-    return (storage === "session" ? window.sessionStorage : window.localStorage).getItem(key);
+    return (
+      storage === "session" ? window.sessionStorage : window.localStorage
+    ).getItem(key);
   } catch {
     return null;
   }
 }
 
-function writeStorage(storage: "session" | "local", key: string, value: string) {
+function writeStorage(
+  storage: "session" | "local",
+  key: string,
+  value: string,
+) {
   if (typeof window === "undefined") {
     return;
   }
   try {
-    (storage === "session" ? window.sessionStorage : window.localStorage).setItem(key, value);
+    (storage === "session"
+      ? window.sessionStorage
+      : window.localStorage
+    ).setItem(key, value);
   } catch {
     // ignore (private mode / disabled storage)
   }

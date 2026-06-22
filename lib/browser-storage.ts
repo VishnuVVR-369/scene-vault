@@ -31,7 +31,10 @@ export function persistLocalLibraryState(state: LibraryState) {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(libraryStateSchema.parse(state)));
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(libraryStateSchema.parse(state)),
+  );
 }
 
 export function clearLocalLibraryState() {

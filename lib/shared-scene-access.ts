@@ -69,7 +69,10 @@ export async function requireSharedSceneAccess(
     if (!access) {
       return {
         ok: false,
-        response: noStoreJson({ error: "Share link not found" }, { status: 404 }),
+        response: noStoreJson(
+          { error: "Share link not found" },
+          { status: 404 },
+        ),
       };
     }
     if (requireAuthForEdit && access.mode === "edit" && !userId) {

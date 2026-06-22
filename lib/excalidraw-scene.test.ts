@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeSceneBundle, sceneContentSignature } from "@/lib/excalidraw-scene";
+import {
+  normalizeSceneBundle,
+  sceneContentSignature,
+} from "@/lib/excalidraw-scene";
 
 const baseBundle = {
   type: "excalidraw" as const,
@@ -69,11 +72,19 @@ describe("Scene content signature", () => {
   it("ignores cosmetic-only app state changes (no redundant save)", () => {
     const a = normalizeSceneBundle({
       ...baseBundle,
-      appState: { viewBackgroundColor: "#ffffff", scrollX: 0, zoom: { value: 1 } },
+      appState: {
+        viewBackgroundColor: "#ffffff",
+        scrollX: 0,
+        zoom: { value: 1 },
+      },
     });
     const b = normalizeSceneBundle({
       ...baseBundle,
-      appState: { viewBackgroundColor: "#ffffff", scrollX: 999, zoom: { value: 4 } },
+      appState: {
+        viewBackgroundColor: "#ffffff",
+        scrollX: 999,
+        zoom: { value: 4 },
+      },
     });
 
     expect(sceneContentSignature(a)).toBe(sceneContentSignature(b));

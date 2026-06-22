@@ -14,7 +14,10 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
 import { Button } from "@/components/ui/button";
 import { type SceneBundle } from "@/lib/domain";
-import { normalizeSceneBundle, sceneContentSignature } from "@/lib/excalidraw-scene";
+import {
+  normalizeSceneBundle,
+  sceneContentSignature,
+} from "@/lib/excalidraw-scene";
 
 const Excalidraw = dynamic(
   async () => (await import("@excalidraw/excalidraw")).Excalidraw,
@@ -64,9 +67,13 @@ export function ExcalidrawCanvas({
   const handleApi = useCallback(
     (api: ExcalidrawImperativeAPI) => {
       apiRef.current = api;
-      if (process.env.NEXT_PUBLIC_E2E_MODE === "1" && typeof window !== "undefined") {
-        (window as unknown as { __excalidrawApi?: ExcalidrawImperativeAPI }).__excalidrawApi =
-          api;
+      if (
+        process.env.NEXT_PUBLIC_E2E_MODE === "1" &&
+        typeof window !== "undefined"
+      ) {
+        (
+          window as unknown as { __excalidrawApi?: ExcalidrawImperativeAPI }
+        ).__excalidrawApi = api;
       }
       onApi?.(api);
     },
@@ -135,7 +142,10 @@ export function ExcalidrawCanvas({
             const api = apiRef.current;
             if (onSceneChange && api) {
               api.updateScene({
-                elements: [...api.getSceneElementsIncludingDeleted(), shape as never],
+                elements: [
+                  ...api.getSceneElementsIncludingDeleted(),
+                  shape as never,
+                ],
               });
               return;
             }
@@ -161,7 +171,10 @@ export function ExcalidrawCanvas({
         onPointerUpdate={
           onPointerUpdate
             ? (payload) =>
-                onPointerUpdate({ pointer: payload.pointer, button: payload.button })
+                onPointerUpdate({
+                  pointer: payload.pointer,
+                  button: payload.button,
+                })
             : undefined
         }
         onChange={(elements, appState, files) => {

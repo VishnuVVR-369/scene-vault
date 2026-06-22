@@ -13,10 +13,17 @@ import {
   shareTokenArgsSchema,
   updateSceneArgsSchema,
 } from "./validation";
-import { mutation, query, type DatabaseReader, type DatabaseWriter } from "./_generated/server";
+import {
+  mutation,
+  query,
+  type DatabaseReader,
+  type DatabaseWriter,
+} from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
-async function requireOwnerId(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }) {
+async function requireOwnerId(ctx: {
+  auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
+}) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Not authenticated");
@@ -35,7 +42,9 @@ function buildSceneThumbnailObjectKey(ownerId: string, sceneId: string) {
 function generateShareToken() {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 async function generateUniqueShareToken(db: DatabaseReader) {
@@ -56,11 +65,15 @@ async function deleteSharesForScene(db: DatabaseWriter, sceneId: Id<"scenes">) {
   const shares = await Promise.all([
     db
       .query("sceneShares")
-      .withIndex("by_scene_mode", (q) => q.eq("sceneId", sceneId).eq("mode", "view"))
+      .withIndex("by_scene_mode", (q) =>
+        q.eq("sceneId", sceneId).eq("mode", "view"),
+      )
       .collect(),
     db
       .query("sceneShares")
-      .withIndex("by_scene_mode", (q) => q.eq("sceneId", sceneId).eq("mode", "edit"))
+      .withIndex("by_scene_mode", (q) =>
+        q.eq("sceneId", sceneId).eq("mode", "edit"),
+      )
       .collect(),
   ]);
   for (const share of shares.flat()) {
@@ -68,7 +81,10 @@ async function deleteSharesForScene(db: DatabaseWriter, sceneId: Id<"scenes">) {
   }
 }
 
-async function deleteCollabRowsForScene(db: DatabaseWriter, sceneId: Id<"scenes">) {
+async function deleteCollabRowsForScene(
+  db: DatabaseWriter,
+  sceneId: Id<"scenes">,
+) {
   const elements = await db
     .query("roomElements")
     .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
@@ -338,7 +354,10 @@ export const renameFolder = mutation({
     if (!folder || folder.ownerId !== ownerId) {
       throw new Error("Folder not found");
     }
-    await ctx.db.patch(args.folderId, { name: input.name, updatedAt: Date.now() });
+    await ctx.db.patch(args.folderId, {
+      name: input.name,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -369,9 +388,13 @@ export const moveFolder = mutation({
       let cursor = parent.parentFolderId;
       while (cursor) {
         if (cursor === args.folderId) {
-          throw new Error("A folder cannot be moved into one of its descendants.");
+          throw new Error(
+            "A folder cannot be moved into one of its descendants.",
+          );
         }
-        cursor = allFolders.find((candidate) => candidate._id === cursor)?.parentFolderId ?? null;
+        cursor =
+          allFolders.find((candidate) => candidate._id === cursor)
+            ?.parentFolderId ?? null;
       }
     }
     await ctx.db.patch(args.folderId, {
@@ -399,7 +422,10 @@ export const deleteFolder = mutation({
     while (changed) {
       changed = false;
       for (const candidate of allFolders) {
-        if (candidate.parentFolderId && folderIds.has(candidate.parentFolderId)) {
+        if (
+          candidate.parentFolderId &&
+          folderIds.has(candidate.parentFolderId)
+        ) {
           if (!folderIds.has(candidate._id)) {
             folderIds.add(candidate._id);
             changed = true;

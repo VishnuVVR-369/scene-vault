@@ -65,10 +65,16 @@ export function SharedEditor({
   const [duplicating, setDuplicating] = useState(false);
   const [joinedRoom, setJoinedRoom] = useState(false);
   const lastSavedHashRef = useRef<string | null>(null);
-  const shareBase = useMemo(() => `/api/share/${encodeURIComponent(token)}`, [token]);
+  const shareBase = useMemo(
+    () => `/api/share/${encodeURIComponent(token)}`,
+    [token],
+  );
   const canEdit = mode === "edit";
   const canSingleUserEdit = canEdit && isLoaded && Boolean(isSignedIn);
-  const canUseLive = canEdit && bundle !== null && bundle.elements.length <= MAX_ELEMENTS_PER_SCENE;
+  const canUseLive =
+    canEdit &&
+    bundle !== null &&
+    bundle.elements.length <= MAX_ELEMENTS_PER_SCENE;
 
   useEffect(() => {
     let cancelled = false;
@@ -215,7 +221,9 @@ export function SharedEditor({
     if (duplicating) return;
     setDuplicating(true);
     try {
-      const response = await fetch(`${shareBase}/duplicate`, { method: "POST" });
+      const response = await fetch(`${shareBase}/duplicate`, {
+        method: "POST",
+      });
       if (response.status === 401) {
         window.location.href = `/sign-in?redirect_url=${encodeURIComponent(window.location.href)}`;
         return;
@@ -236,7 +244,9 @@ export function SharedEditor({
         <div className="sketch-card max-w-sm space-y-4 bg-card p-8 text-center">
           <LogoMark className="mx-auto size-10" />
           <div>
-            <h1 className="font-display text-xl font-bold">Share link unavailable</h1>
+            <h1 className="font-display text-xl font-bold">
+              Share link unavailable
+            </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               This link may have been disabled, reset, or deleted.
             </p>

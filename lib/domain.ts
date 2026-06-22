@@ -82,7 +82,11 @@ export const saveSceneBundleInputSchema = z.object({
 
 export const r2UploadRequestSchema = z.object({
   contentType: z.enum(["application/json", "application/vnd.excalidraw+json"]),
-  byteSize: z.number().int().positive().max(25 * 1024 * 1024),
+  byteSize: z
+    .number()
+    .int()
+    .positive()
+    .max(25 * 1024 * 1024),
   contentHash: z.string().min(8).max(128),
 });
 
@@ -109,10 +113,12 @@ export const convexFolderDocSchema = folderSchema.omit({ id: true }).extend({
   _creationTime: z.number(),
 });
 
-export const convexSceneDocSchema = sceneMetadataSchema.omit({ id: true }).extend({
-  _id: z.string().min(1),
-  _creationTime: z.number(),
-});
+export const convexSceneDocSchema = sceneMetadataSchema
+  .omit({ id: true })
+  .extend({
+    _id: z.string().min(1),
+    _creationTime: z.number(),
+  });
 
 export const convexLibraryResponseSchema = z.object({
   folders: z.array(convexFolderDocSchema),

@@ -76,7 +76,10 @@ export function Wordmark({
   }
 
   return (
-    <Link href={href} className="inline-flex items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Link
+      href={href}
+      className="inline-flex items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       {content}
     </Link>
   );
@@ -124,7 +127,10 @@ export function MarkerCircle({
       fill="none"
       preserveAspectRatio="none"
       aria-hidden="true"
-      className={cn("pointer-events-none absolute -inset-x-3 -inset-y-2", className)}
+      className={cn(
+        "pointer-events-none absolute -inset-x-3 -inset-y-2",
+        className,
+      )}
     >
       <path
         d="M150 8c-52-6-118-2-135 22-13 19 19 38 86 44 60 5 128-3 132-30 3-19-38-33-99-37"

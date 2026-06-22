@@ -33,7 +33,9 @@ import type { Doc, Id } from "./_generated/dataModel";
 function randomHex(byteLength: number) {
   const bytes = new Uint8Array(byteLength);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 async function hashSecret(secret: string) {
@@ -183,7 +185,11 @@ async function deleteLiveRoomRows(db: DatabaseWriter, sceneId: Id<"scenes">) {
 /** Token-bucket rate limit gate for a (session, action). Throws when exceeded. */
 async function enforceRateLimit(
   ctx: { db: DatabaseWriter },
-  args: { sceneId: Id<"scenes">; roomSessionId: string; action: keyof typeof RATE_LIMITS },
+  args: {
+    sceneId: Id<"scenes">;
+    roomSessionId: string;
+    action: keyof typeof RATE_LIMITS;
+  },
   now: number,
 ) {
   const config = RATE_LIMITS[args.action];
@@ -201,7 +207,10 @@ async function enforceRateLimit(
     : null;
   const result = consumeToken(prev, now, config);
   if (existing) {
-    await ctx.db.patch(existing._id, { tokens: result.tokens, updatedAt: result.updatedAt });
+    await ctx.db.patch(existing._id, {
+      tokens: result.tokens,
+      updatedAt: result.updatedAt,
+    });
   } else {
     await ctx.db.insert("collabRateLimits", {
       sceneId: args.sceneId,
@@ -246,7 +255,11 @@ export const startRoom = mutation({
         startedAt: now,
         stoppedAt: null,
       });
-      return { active: true, startedByUserId: auth.userId, status: existing.status };
+      return {
+        active: true,
+        startedByUserId: auth.userId,
+        status: existing.status,
+      };
     }
     if (existing) {
       await deleteLiveRoomRows(ctx.db, args.sceneId);
@@ -432,7 +445,10 @@ export const completeHydration = mutation({
 // ---------------------------------------------------------------------------
 
 export const getRoomView = query({
-  args: { sceneId: v.id("scenes"), token: v.optional(v.union(v.string(), v.null())) },
+  args: {
+    sceneId: v.id("scenes"),
+    token: v.optional(v.union(v.string(), v.null())),
+  },
   handler: async (ctx, args) => {
     const auth = await authorizeEdit(ctx, args);
     if (!auth) {
@@ -450,13 +466,17 @@ export const getRoomView = query({
       title: auth.scene.title,
       startedByUserId: active ? (room!.startedByUserId ?? null) : null,
       canStart: auth.viaOwner && !active,
-      canStop: active && auth.userId !== null && room!.startedByUserId === auth.userId,
+      canStop:
+        active && auth.userId !== null && room!.startedByUserId === auth.userId,
     };
   },
 });
 
 export const getRoomElements = query({
-  args: { sceneId: v.id("scenes"), token: v.optional(v.union(v.string(), v.null())) },
+  args: {
+    sceneId: v.id("scenes"),
+    token: v.optional(v.union(v.string(), v.null())),
+  },
   handler: async (ctx, args) => {
     const auth = await authorizeEdit(ctx, args);
     if (!auth) {
@@ -481,7 +501,10 @@ export const getRoomElements = query({
 });
 
 export const getPresence = query({
-  args: { sceneId: v.id("scenes"), token: v.optional(v.union(v.string(), v.null())) },
+  args: {
+    sceneId: v.id("scenes"),
+    token: v.optional(v.union(v.string(), v.null())),
+  },
   handler: async (ctx, args) => {
     const auth = await authorizeEdit(ctx, args);
     if (!auth) {
@@ -540,8 +563,13 @@ export const pushElements = mutation({
     if (!batch.ok) {
       throw new Error(batch.reason);
     }
-    const { elements: existingRows } = await getMaxElementUpdatedAt(ctx, args.sceneId);
-    const existingById = new Map(existingRows.map((row) => [row.elementId, row]));
+    const { elements: existingRows } = await getMaxElementUpdatedAt(
+      ctx,
+      args.sceneId,
+    );
+    const existingById = new Map(
+      existingRows.map((row) => [row.elementId, row]),
+    );
     const newElementIds = new Set<string>();
     for (const element of batch.elements) {
       if (!existingById.has(element.elementId)) {
@@ -683,7 +711,10 @@ export const stopRoom = mutation({
     if (room!.startedByUserId !== userId) {
       throw new Error("Only the room starter can stop this room");
     }
-    const { maxElementUpdatedAt } = await getMaxElementUpdatedAt(ctx, args.sceneId);
+    const { maxElementUpdatedAt } = await getMaxElementUpdatedAt(
+      ctx,
+      args.sceneId,
+    );
     if (roomIsDirty(maxElementUpdatedAt, room!.snapshotMaxUpdatedAt)) {
       throw new Error("Room has unsaved changes");
     }
@@ -716,7 +747,8 @@ export const markRoomSnapshot = mutation({
     }
     if (
       args.snapshotMaxUpdatedAt !== undefined &&
-      (!Number.isFinite(args.snapshotMaxUpdatedAt) || args.snapshotMaxUpdatedAt < 0)
+      (!Number.isFinite(args.snapshotMaxUpdatedAt) ||
+        args.snapshotMaxUpdatedAt < 0)
     ) {
       throw new Error("Invalid snapshot watermark");
     }
@@ -727,7 +759,10 @@ export const markRoomSnapshot = mutation({
     if (auth.scene.contentHash !== args.snapshotHash) {
       return { marked: false, reason: "uncommitted" };
     }
-    const { maxElementUpdatedAt } = await getMaxElementUpdatedAt(ctx, args.sceneId);
+    const { maxElementUpdatedAt } = await getMaxElementUpdatedAt(
+      ctx,
+      args.sceneId,
+    );
     const serverWatermark = maxElementUpdatedAt ?? 0;
     if (
       args.snapshotMaxUpdatedAt !== undefined &&
@@ -771,7 +806,9 @@ async function deleteSessionRows(
   }
   const rateLimits = await ctx.db
     .query("collabRateLimits")
-    .withIndex("by_key", (q) => q.eq("sceneId", sceneId).eq("roomSessionId", roomSessionId))
+    .withIndex("by_key", (q) =>
+      q.eq("sceneId", sceneId).eq("roomSessionId", roomSessionId),
+    )
     .collect();
   for (const limit of rateLimits) {
     await ctx.db.delete(limit._id);
@@ -804,7 +841,9 @@ export const sweep = internalMutation({
           const session = await ctx.db
             .query("roomSessions")
             .withIndex("by_room_session", (q) =>
-              q.eq("sceneId", room.sceneId).eq("roomSessionId", presence.roomSessionId),
+              q
+                .eq("sceneId", room.sceneId)
+                .eq("roomSessionId", presence.roomSessionId),
             )
             .unique();
           await deleteSessionRows(
@@ -822,7 +861,10 @@ export const sweep = internalMutation({
         .collect();
       let maxElementUpdatedAt: number | null = null;
       for (const element of elements) {
-        maxElementUpdatedAt = Math.max(maxElementUpdatedAt ?? 0, element.updatedAt);
+        maxElementUpdatedAt = Math.max(
+          maxElementUpdatedAt ?? 0,
+          element.updatedAt,
+        );
       }
 
       if (

@@ -52,7 +52,12 @@ async function seedEditShare(t: T, sceneId: string, enabled = true) {
   );
 }
 
-function el(id: string, version: number, versionNonce: number, extra: Record<string, unknown> = {}) {
+function el(
+  id: string,
+  version: number,
+  versionNonce: number,
+  extra: Record<string, unknown> = {},
+) {
   return {
     id,
     type: "rectangle",
@@ -112,7 +117,10 @@ describe("collab backend", () => {
 
     const started = await startRoom(t, sceneId);
     expect(started.active).toBe(true);
-    const guestView = await t.query(api.collab.getRoomView, { sceneId, token: TOKEN });
+    const guestView = await t.query(api.collab.getRoomView, {
+      sceneId,
+      token: TOKEN,
+    });
     expect(guestView.authorized).toBe(true);
     if (guestView.authorized) {
       expect(guestView.active).toBe(true);
@@ -155,7 +163,9 @@ describe("collab backend", () => {
         .unique(),
     );
     expect(room?.startedByUserId).toBe(OWNER);
-    const elements = await owner(t).query(api.collab.getRoomElements, { sceneId });
+    const elements = await owner(t).query(api.collab.getRoomElements, {
+      sceneId,
+    });
     expect(elements?.map((element) => element.elementId)).toEqual(["legacy"]);
   });
 
@@ -175,7 +185,9 @@ describe("collab backend", () => {
       elements: [el("a", 1, 5)],
     });
 
-    const elements = await owner(t).query(api.collab.getRoomElements, { sceneId });
+    const elements = await owner(t).query(api.collab.getRoomElements, {
+      sceneId,
+    });
     expect(elements).not.toBeNull();
     expect(elements!.map((e) => e.elementId)).toEqual(["a"]);
     expect(elements![0].version).toBe(1);
@@ -203,7 +215,10 @@ describe("collab backend", () => {
       elements: [el("b", 1, 3)],
     });
 
-    const elements = await t.query(api.collab.getRoomElements, { sceneId, token: TOKEN });
+    const elements = await t.query(api.collab.getRoomElements, {
+      sceneId,
+      token: TOKEN,
+    });
     expect(elements!.map((e) => e.elementId)).toContain("b");
   });
 
@@ -222,22 +237,31 @@ describe("collab backend", () => {
 
     await push([el("a", 1, 5)]);
     await push([el("a", 1, 9)]); // equal version, higher nonce -> rejected
-    let stored = (await owner(t).query(api.collab.getRoomElements, { sceneId }))![0];
+    let stored = (await owner(t).query(api.collab.getRoomElements, {
+      sceneId,
+    }))![0];
     expect(stored.versionNonce).toBe(5);
 
     await push([el("a", 1, 2)]); // equal version, lower nonce -> accepted
-    stored = (await owner(t).query(api.collab.getRoomElements, { sceneId }))![0];
+    stored = (await owner(t).query(api.collab.getRoomElements, {
+      sceneId,
+    }))![0];
     expect(stored.versionNonce).toBe(2);
 
     await push([el("a", 2, 999)]); // higher version -> accepted
-    stored = (await owner(t).query(api.collab.getRoomElements, { sceneId }))![0];
+    stored = (await owner(t).query(api.collab.getRoomElements, {
+      sceneId,
+    }))![0];
     expect(stored.version).toBe(2);
     expect(stored.versionNonce).toBe(999);
   });
 
   it("guest hydration claim is exclusive and seeds elements", async () => {
     const t = setup();
-    const sceneId = await seedScene(t, { currentObjectKey: "key", contentHash: "hash-1" });
+    const sceneId = await seedScene(t, {
+      currentObjectKey: "key",
+      contentHash: "hash-1",
+    });
     await seedEditShare(t, sceneId);
     await startRoom(t, sceneId);
 
@@ -266,7 +290,10 @@ describe("collab backend", () => {
     });
     expect(seeded.seeded).toBe(true);
 
-    const elements = await t.query(api.collab.getRoomElements, { sceneId, token: TOKEN });
+    const elements = await t.query(api.collab.getRoomElements, {
+      sceneId,
+      token: TOKEN,
+    });
     expect(elements!.map((e) => e.elementId).sort()).toEqual(["x", "y"]);
 
     // Room is now ready -> a fresh joiner does not re-hydrate.
@@ -294,9 +321,15 @@ describe("collab backend", () => {
     // Disable the share.
     await t.run(async (ctx) => ctx.db.patch(shareId, { enabled: false }));
 
-    const view = await t.query(api.collab.getRoomView, { sceneId, token: TOKEN });
+    const view = await t.query(api.collab.getRoomView, {
+      sceneId,
+      token: TOKEN,
+    });
     expect(view.authorized).toBe(false);
-    const elements = await t.query(api.collab.getRoomElements, { sceneId, token: TOKEN });
+    const elements = await t.query(api.collab.getRoomElements, {
+      sceneId,
+      token: TOKEN,
+    });
     expect(elements).toBeNull();
     await expect(
       t.mutation(api.collab.pushElements, {
@@ -311,7 +344,10 @@ describe("collab backend", () => {
 
   it("does not complete hydration after an edit share is revoked", async () => {
     const t = setup();
-    const sceneId = await seedScene(t, { currentObjectKey: "key", contentHash: "hash-1" });
+    const sceneId = await seedScene(t, {
+      currentObjectKey: "key",
+      contentHash: "hash-1",
+    });
     const shareId = await seedEditShare(t, sceneId);
     await startRoom(t, sceneId);
     const guest = await t.mutation(api.collab.joinRoom, {
@@ -430,7 +466,9 @@ describe("collab backend", () => {
       sessionSecret: join.sessionSecret,
       elements: [el("a", 1, 1)],
     });
-    const [stored] = (await owner(t).query(api.collab.getRoomElements, { sceneId }))!;
+    const [stored] = (await owner(t).query(api.collab.getRoomElements, {
+      sceneId,
+    }))!;
     const uncommitted = await owner(t).mutation(api.collab.markRoomSnapshot, {
       sceneId,
       roomSessionId: join.roomSessionId,
@@ -440,7 +478,9 @@ describe("collab backend", () => {
     });
     expect(uncommitted).toEqual({ marked: false, reason: "uncommitted" });
 
-    await t.run(async (ctx) => ctx.db.patch(sceneId, { contentHash: "current" }));
+    await t.run(async (ctx) =>
+      ctx.db.patch(sceneId, { contentHash: "current" }),
+    );
     await expect(
       owner(t).mutation(api.collab.markRoomSnapshot, {
         sceneId,
@@ -536,8 +576,12 @@ describe("collab backend", () => {
       expect(view.active).toBe(false);
       expect(view.canStart).toBe(true);
     }
-    expect(await owner(t).query(api.collab.getRoomElements, { sceneId })).toEqual([]);
-    await expect(joinOwner(t, sceneId)).rejects.toThrow("Room has not been started");
+    expect(
+      await owner(t).query(api.collab.getRoomElements, { sceneId }),
+    ).toEqual([]);
+    await expect(joinOwner(t, sceneId)).rejects.toThrow(
+      "Room has not been started",
+    );
   });
 
   it("deleting a scene removes its live collaboration rows", async () => {
@@ -605,9 +649,9 @@ describe("collab backend", () => {
       roomSessionId: cleanJoin.roomSessionId,
       sessionSecret: cleanJoin.sessionSecret,
       snapshotHash: "h",
-      snapshotMaxUpdatedAt: (
-        await owner(t).query(api.collab.getRoomElements, { sceneId: cleanScene })
-      )![0].updatedAt,
+      snapshotMaxUpdatedAt: (await owner(t).query(api.collab.getRoomElements, {
+        sceneId: cleanScene,
+      }))![0].updatedAt,
     });
 
     // Dirty room: never snapshotted.
@@ -631,7 +675,9 @@ describe("collab backend", () => {
 
     await t.mutation(internal.collab.sweep, {});
 
-    const rooms = await t.run(async (ctx) => ctx.db.query("liveRooms").collect());
+    const rooms = await t.run(async (ctx) =>
+      ctx.db.query("liveRooms").collect(),
+    );
     const sceneIds = rooms.map((r) => r.sceneId);
     expect(sceneIds).toContain(dirtyScene);
     expect(sceneIds).not.toContain(cleanScene);

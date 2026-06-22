@@ -62,7 +62,7 @@ export async function requireSceneStorageAccess(
         response: Response.json({ error: "Scene not found" }, { status: 404 }),
       };
     }
-  return { ok: true, userId, access };
+    return { ok: true, userId, access };
   } catch {
     return {
       ok: false,

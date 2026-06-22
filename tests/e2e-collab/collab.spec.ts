@@ -17,8 +17,11 @@ const fixture = loadFixture();
 
 function elementCount(page: Page): Promise<number> {
   return page.evaluate(() => {
-    const api = (window as unknown as { __excalidrawApi?: { getSceneElements: () => unknown[] } })
-      .__excalidrawApi;
+    const api = (
+      window as unknown as {
+        __excalidrawApi?: { getSceneElements: () => unknown[] };
+      }
+    ).__excalidrawApi;
     return api ? api.getSceneElements().length : -1;
   });
 }
@@ -43,8 +46,12 @@ test("two guests edit the same room live", async ({ browser }) => {
   await b.getByRole("button", { name: "Join room" }).click();
 
   // Both guests reach the live collaborative canvas after explicitly joining.
-  await a.getByTestId("e2e-add-shape").waitFor({ state: "visible", timeout: 45_000 });
-  await b.getByTestId("e2e-add-shape").waitFor({ state: "visible", timeout: 45_000 });
+  await a
+    .getByTestId("e2e-add-shape")
+    .waitFor({ state: "visible", timeout: 45_000 });
+  await b
+    .getByTestId("e2e-add-shape")
+    .waitFor({ state: "visible", timeout: 45_000 });
 
   // Both show the live presence indicator (status reached "ready").
   await expect(a.getByText(/Live/)).toBeVisible({ timeout: 30_000 });
@@ -53,7 +60,9 @@ test("two guests edit the same room live", async ({ browser }) => {
   await expect.poll(() => elementCount(b), { timeout: 20_000 }).toBe(0);
   await a.getByTestId("e2e-add-shape").click();
 
-  await expect.poll(() => elementCount(a), { timeout: 20_000 }).toBeGreaterThanOrEqual(1);
+  await expect
+    .poll(() => elementCount(a), { timeout: 20_000 })
+    .toBeGreaterThanOrEqual(1);
   await expect
     .poll(() => elementCount(b), { timeout: 25_000 })
     .toBeGreaterThanOrEqual(1);

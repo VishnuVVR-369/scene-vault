@@ -4,7 +4,10 @@ import { makeFunctionReference } from "convex/server";
 import { z, ZodError } from "zod";
 
 import { noStoreJson } from "@/lib/scene-storage-access";
-import { referrerSafeHeaders, requireSharedSceneAccess } from "@/lib/shared-scene-access";
+import {
+  referrerSafeHeaders,
+  requireSharedSceneAccess,
+} from "@/lib/shared-scene-access";
 
 type ShareRouteContext = {
   params: Promise<{ token: string }>;

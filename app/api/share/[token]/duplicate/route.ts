@@ -2,12 +2,12 @@ import { auth } from "@clerk/nextjs/server";
 import { fetchMutation } from "convex/nextjs";
 import { makeFunctionReference } from "convex/server";
 
-import {
-  copySceneObject,
-  copySceneThumbnailObject,
-} from "@/lib/r2";
+import { copySceneObject, copySceneThumbnailObject } from "@/lib/r2";
 import { noStoreJson } from "@/lib/scene-storage-access";
-import { referrerSafeHeaders, requireSharedSceneAccess } from "@/lib/shared-scene-access";
+import {
+  referrerSafeHeaders,
+  requireSharedSceneAccess,
+} from "@/lib/shared-scene-access";
 
 type ShareRouteContext = {
   params: Promise<{ token: string }>;
@@ -35,7 +35,9 @@ export const dynamic = "force-dynamic";
 
 export async function POST(_request: Request, ctx: ShareRouteContext) {
   const { token } = await ctx.params;
-  const accessResult = await requireSharedSceneAccess(token, { requireAuth: true });
+  const accessResult = await requireSharedSceneAccess(token, {
+    requireAuth: true,
+  });
   if (!accessResult.ok) {
     return accessResult.response;
   }
@@ -88,7 +90,9 @@ export async function POST(_request: Request, ctx: ShareRouteContext) {
         objectKey: copiedScene.targetKey,
         byteSize: source.byteSize,
         contentHash: source.contentHash,
-        ...(copiedThumbnail ? { thumbnailObjectKey: copiedThumbnail.targetKey } : {}),
+        ...(copiedThumbnail
+          ? { thumbnailObjectKey: copiedThumbnail.targetKey }
+          : {}),
       },
       { token: convexToken },
     );

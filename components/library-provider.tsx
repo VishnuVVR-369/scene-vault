@@ -14,7 +14,10 @@ import {
 } from "react";
 import { z } from "zod";
 
-import { loadLocalLibraryState, persistLocalLibraryState } from "@/lib/browser-storage";
+import {
+  loadLocalLibraryState,
+  persistLocalLibraryState,
+} from "@/lib/browser-storage";
 import {
   convexLibraryResponseSchema,
   createEmptySceneBundle,
@@ -62,7 +65,10 @@ type LibraryContextValue = {
   thumbnails: Record<string, string>;
   createFolder: (name: string, parentFolderId: string | null) => Promise<void>;
   renameFolder: (folderId: string, name: string) => Promise<void>;
-  moveFolder: (folderId: string, parentFolderId: string | null) => Promise<void>;
+  moveFolder: (
+    folderId: string,
+    parentFolderId: string | null,
+  ) => Promise<void>;
   deleteFolder: (folderId: string) => Promise<void>;
   createScene: (title: string, folderId: string | null) => Promise<string>;
   updateScene: (
@@ -72,7 +78,10 @@ type LibraryContextValue = {
   deleteScene: (sceneId: string) => Promise<void>;
   duplicateScene: (sceneId: string) => Promise<string>;
   loadSceneBundle: (sceneId: string) => Promise<SceneBundle>;
-  saveSceneBundle: (sceneId: string, bundle: SceneBundle) => Promise<SaveStatus>;
+  saveSceneBundle: (
+    sceneId: string,
+    bundle: SceneBundle,
+  ) => Promise<SaveStatus>;
 };
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
@@ -81,7 +90,7 @@ export const shouldUseRemoteData =
   process.env.NEXT_PUBLIC_LOCAL_DATA !== "1" &&
   Boolean(
     process.env.NEXT_PUBLIC_CONVEX_URL &&
-      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   );
 
 const idSchema = z.string().min(1);
@@ -121,9 +130,11 @@ const convexRefs = {
   deleteScene: makeFunctionReference<"mutation", { sceneId: string }, null>(
     "library:deleteScene",
   ),
-  duplicateScene: makeFunctionReference<"mutation", { sceneId: string }, string>(
-    "library:duplicateScene",
-  ),
+  duplicateScene: makeFunctionReference<
+    "mutation",
+    { sceneId: string },
+    string
+  >("library:duplicateScene"),
   commitSceneSave: makeFunctionReference<
     "mutation",
     {
@@ -145,7 +156,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 }
 
 function LocalLibraryProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<LibraryState>(() => loadLocalLibraryState());
+  const [state, setState] = useState<LibraryState>(() =>
+    loadLocalLibraryState(),
+  );
   const ready = true;
   const lastSavedHashRef = useRef<Map<string, string>>(new Map());
 
@@ -166,13 +179,17 @@ function LocalLibraryProvider({ children }: { children: ReactNode }) {
       ready,
       thumbnails: state.thumbnails,
       createFolder: async (name, parentFolderId) => {
-        apply((current) => createLocalFolder(current, { name, parentFolderId }));
+        apply((current) =>
+          createLocalFolder(current, { name, parentFolderId }),
+        );
       },
       renameFolder: async (folderId, name) => {
         apply((current) => renameLocalFolder(current, { id: folderId, name }));
       },
       moveFolder: async (folderId, parentFolderId) => {
-        apply((current) => moveLocalFolder(current, { id: folderId, parentFolderId }));
+        apply((current) =>
+          moveLocalFolder(current, { id: folderId, parentFolderId }),
+        );
       },
       deleteFolder: async (folderId) => {
         apply((current) => deleteLocalFolder(current, folderId));
@@ -187,7 +204,9 @@ function LocalLibraryProvider({ children }: { children: ReactNode }) {
         return sceneId;
       },
       updateScene: async (sceneId, patch) => {
-        apply((current) => updateLocalScene(current, { id: sceneId, ...patch }));
+        apply((current) =>
+          updateLocalScene(current, { id: sceneId, ...patch }),
+        );
       },
       deleteScene: async (sceneId) => {
         apply((current) => deleteLocalScene(current, sceneId));
@@ -202,7 +221,9 @@ function LocalLibraryProvider({ children }: { children: ReactNode }) {
         return copyId;
       },
       loadSceneBundle: async (sceneId) => {
-        return normalizeSceneBundle(state.bundles[sceneId] ?? createEmptySceneBundle());
+        return normalizeSceneBundle(
+          state.bundles[sceneId] ?? createEmptySceneBundle(),
+        );
       },
       saveSceneBundle: async (sceneId, bundle) => {
         const parsed = normalizeSceneBundle(bundle);
@@ -233,7 +254,9 @@ function LocalLibraryProvider({ children }: { children: ReactNode }) {
     [apply, ready, state],
   );
 
-  return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
+  return (
+    <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>
+  );
 }
 
 function RemoteLibraryProvider({ children }: { children: ReactNode }) {
@@ -288,9 +311,12 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
   const deleteRemoteSceneStorage = useCallback(
     async (sceneId: string) => {
       assertRemoteAuthenticated();
-      const response = await fetch(`/api/scenes/${idSchema.parse(sceneId)}/storage`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `/api/scenes/${idSchema.parse(sceneId)}/storage`,
+        {
+          method: "DELETE",
+        },
+      );
       if (!response.ok) {
         throw new Error("Could not delete the scene object.");
       }
@@ -302,7 +328,9 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
     async (sceneId: string) => {
       assertRemoteAuthenticated();
       const parsedSceneId = idSchema.parse(sceneId);
-      const scene = library.scenes.find((candidate) => candidate.id === parsedSceneId);
+      const scene = library.scenes.find(
+        (candidate) => candidate.id === parsedSceneId,
+      );
       if (!scene) {
         throw new Error("Scene not found.");
       }
@@ -310,11 +338,15 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
         return createEmptySceneBundle();
       }
 
-      const signedResponse = await fetch(`/api/scenes/${parsedSceneId}/download`);
+      const signedResponse = await fetch(
+        `/api/scenes/${parsedSceneId}/download`,
+      );
       if (!signedResponse.ok) {
         throw new Error("Could not create a scene download URL.");
       }
-      const target = signedStorageTargetSchema.parse(await signedResponse.json());
+      const target = signedStorageTargetSchema.parse(
+        await signedResponse.json(),
+      );
       const sceneResponse = await fetch(target.url);
       if (!sceneResponse.ok) {
         throw new Error("Could not download the scene bundle.");
@@ -341,7 +373,9 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
         if (!signedResponse.ok) {
           return null;
         }
-        const target = signedStorageTargetSchema.parse(await signedResponse.json());
+        const target = signedStorageTargetSchema.parse(
+          await signedResponse.json(),
+        );
         const uploadResponse = await fetch(target.url, {
           method: "PUT",
           headers: { "content-type": "image/png" },
@@ -371,19 +405,24 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
         return "saved";
       }
 
-      const signedResponse = await fetch(`/api/scenes/${input.sceneId}/upload`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contentType: "application/json",
-          byteSize: input.byteSize,
-          contentHash: input.contentHash,
-        }),
-      });
+      const signedResponse = await fetch(
+        `/api/scenes/${input.sceneId}/upload`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contentType: "application/json",
+            byteSize: input.byteSize,
+            contentHash: input.contentHash,
+          }),
+        },
+      );
       if (!signedResponse.ok) {
         throw new Error("Could not create a scene upload URL.");
       }
-      const target = signedStorageTargetSchema.parse(await signedResponse.json());
+      const target = signedStorageTargetSchema.parse(
+        await signedResponse.json(),
+      );
 
       const uploadResponse = await fetch(target.url, {
         method: "PUT",
@@ -409,7 +448,11 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
       lastSavedHashRef.current.set(input.sceneId, input.contentHash);
       return "saved";
     },
-    [assertRemoteAuthenticated, commitSceneSaveMutation, uploadRemoteSceneThumbnail],
+    [
+      assertRemoteAuthenticated,
+      commitSceneSaveMutation,
+      uploadRemoteSceneThumbnail,
+    ],
   );
 
   const sceneIdsUnderFolder = useCallback(
@@ -467,7 +510,10 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
       },
       moveFolder: async (folderId, parentFolderId) => {
         assertRemoteAuthenticated();
-        const input = moveFolderInputSchema.parse({ id: folderId, parentFolderId });
+        const input = moveFolderInputSchema.parse({
+          id: folderId,
+          parentFolderId,
+        });
         await moveFolderMutation({
           folderId: input.id,
           parentFolderId: input.parentFolderId,
@@ -476,7 +522,9 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
       deleteFolder: async (folderId) => {
         assertRemoteAuthenticated();
         for (const sceneId of sceneIdsUnderFolder(folderId)) {
-          const scene = library.scenes.find((candidate) => candidate.id === sceneId);
+          const scene = library.scenes.find(
+            (candidate) => candidate.id === sceneId,
+          );
           if (scene?.currentObjectKey) {
             await deleteRemoteSceneStorage(sceneId);
           }
@@ -500,7 +548,9 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
       deleteScene: async (sceneId) => {
         assertRemoteAuthenticated();
         const parsedSceneId = idSchema.parse(sceneId);
-        const scene = library.scenes.find((candidate) => candidate.id === parsedSceneId);
+        const scene = library.scenes.find(
+          (candidate) => candidate.id === parsedSceneId,
+        );
         if (scene?.currentObjectKey) {
           await deleteRemoteSceneStorage(parsedSceneId);
         }
@@ -540,7 +590,9 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
+  return (
+    <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>
+  );
 }
 
 export function useLibrary() {

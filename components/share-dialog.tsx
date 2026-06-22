@@ -25,7 +25,7 @@ const canUseRemoteSharing =
   process.env.NEXT_PUBLIC_LOCAL_DATA !== "1" &&
   Boolean(
     process.env.NEXT_PUBLIC_CONVEX_URL &&
-      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   );
 
 const refs = {

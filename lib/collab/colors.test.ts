@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { COLLAB_COLORS, colorForId, guestNameForId, hashString } from "./colors";
+import {
+  COLLAB_COLORS,
+  colorForId,
+  guestNameForId,
+  hashString,
+} from "./colors";
 
 describe("collab colors", () => {
   it("hashString is deterministic and non-negative", () => {

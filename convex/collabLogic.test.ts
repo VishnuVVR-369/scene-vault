@@ -23,24 +23,53 @@ import {
 
 describe("incomingElementWins", () => {
   it("accepts when there is no stored element", () => {
-    expect(incomingElementWins({ version: 1, versionNonce: 1 }, null)).toBe(true);
+    expect(incomingElementWins({ version: 1, versionNonce: 1 }, null)).toBe(
+      true,
+    );
   });
   it("prefers higher version", () => {
-    expect(incomingElementWins({ version: 2, versionNonce: 9 }, { version: 1, versionNonce: 1 })).toBe(true);
-    expect(incomingElementWins({ version: 1, versionNonce: 1 }, { version: 2, versionNonce: 9 })).toBe(false);
+    expect(
+      incomingElementWins(
+        { version: 2, versionNonce: 9 },
+        { version: 1, versionNonce: 1 },
+      ),
+    ).toBe(true);
+    expect(
+      incomingElementWins(
+        { version: 1, versionNonce: 1 },
+        { version: 2, versionNonce: 9 },
+      ),
+    ).toBe(false);
   });
   it("breaks version ties by lower nonce (matches Excalidraw)", () => {
-    expect(incomingElementWins({ version: 1, versionNonce: 2 }, { version: 1, versionNonce: 5 })).toBe(true);
-    expect(incomingElementWins({ version: 1, versionNonce: 5 }, { version: 1, versionNonce: 2 })).toBe(false);
+    expect(
+      incomingElementWins(
+        { version: 1, versionNonce: 2 },
+        { version: 1, versionNonce: 5 },
+      ),
+    ).toBe(true);
+    expect(
+      incomingElementWins(
+        { version: 1, versionNonce: 5 },
+        { version: 1, versionNonce: 2 },
+      ),
+    ).toBe(false);
   });
   it("treats identical version+nonce as no-op", () => {
-    expect(incomingElementWins({ version: 1, versionNonce: 5 }, { version: 1, versionNonce: 5 })).toBe(false);
+    expect(
+      incomingElementWins(
+        { version: 1, versionNonce: 5 },
+        { version: 1, versionNonce: 5 },
+      ),
+    ).toBe(false);
   });
 });
 
 describe("extractRoomElement", () => {
   it("pulls id/version/nonce and defaults a missing nonce", () => {
-    expect(extractRoomElement({ id: "a", version: 3, versionNonce: 7 })).toEqual({
+    expect(
+      extractRoomElement({ id: "a", version: 3, versionNonce: 7 }),
+    ).toEqual({
       elementId: "a",
       data: { id: "a", version: 3, versionNonce: 7 },
       version: 3,
@@ -58,7 +87,9 @@ describe("extractRoomElement", () => {
 
 describe("validateElementBatch", () => {
   it("normalizes a valid batch", () => {
-    const result = validateElementBatch([{ id: "a", version: 1, versionNonce: 2 }]);
+    const result = validateElementBatch([
+      { id: "a", version: 1, versionNonce: 2 },
+    ]);
     expect(result.ok).toBe(true);
   });
   it("rejects non-arrays and oversized batches", () => {
@@ -71,7 +102,12 @@ describe("validateElementBatch", () => {
     expect(validateElementBatch(tooMany).ok).toBe(false);
   });
   it("rejects elements that exceed the byte cap", () => {
-    const big = { id: "a", version: 1, versionNonce: 1, blob: "x".repeat(MAX_ELEMENT_BYTES) };
+    const big = {
+      id: "a",
+      version: 1,
+      versionNonce: 1,
+      blob: "x".repeat(MAX_ELEMENT_BYTES),
+    };
     expect(validateElementBatch([big]).ok).toBe(false);
   });
 });
@@ -152,19 +188,43 @@ describe("hydration + GC decisions", () => {
     const now = 1_000_000;
     // Active presence -> never.
     expect(
-      roomIsCollectable({ hasActivePresence: true, lastPresenceAt: now, now, maxElementUpdatedAt: 1, snapshotMaxUpdatedAt: 1 }),
+      roomIsCollectable({
+        hasActivePresence: true,
+        lastPresenceAt: now,
+        now,
+        maxElementUpdatedAt: 1,
+        snapshotMaxUpdatedAt: 1,
+      }),
     ).toBe(false);
     // Recently idle -> wait.
     expect(
-      roomIsCollectable({ hasActivePresence: false, lastPresenceAt: now - 1000, now, maxElementUpdatedAt: 1, snapshotMaxUpdatedAt: 1 }),
+      roomIsCollectable({
+        hasActivePresence: false,
+        lastPresenceAt: now - 1000,
+        now,
+        maxElementUpdatedAt: 1,
+        snapshotMaxUpdatedAt: 1,
+      }),
     ).toBe(false);
     // Idle past grace but dirty -> keep.
     expect(
-      roomIsCollectable({ hasActivePresence: false, lastPresenceAt: now - 5_000_000, now, maxElementUpdatedAt: 5, snapshotMaxUpdatedAt: 1 }),
+      roomIsCollectable({
+        hasActivePresence: false,
+        lastPresenceAt: now - 5_000_000,
+        now,
+        maxElementUpdatedAt: 5,
+        snapshotMaxUpdatedAt: 1,
+      }),
     ).toBe(false);
     // Idle past grace and clean -> collect.
     expect(
-      roomIsCollectable({ hasActivePresence: false, lastPresenceAt: now - 5_000_000, now, maxElementUpdatedAt: 5, snapshotMaxUpdatedAt: 5 }),
+      roomIsCollectable({
+        hasActivePresence: false,
+        lastPresenceAt: now - 5_000_000,
+        now,
+        maxElementUpdatedAt: 5,
+        snapshotMaxUpdatedAt: 5,
+      }),
     ).toBe(true);
   });
 });
@@ -173,9 +233,33 @@ describe("buildCollaboratorEntries", () => {
   it("excludes self and maps cursors + selections", () => {
     const entries = buildCollaboratorEntries(
       [
-        { roomSessionId: "me", name: "Me", color: "#111", cursorX: 0, cursorY: 0, button: "up", selectedIds: [] },
-        { roomSessionId: "them", name: "Them", color: "#222", cursorX: 5, cursorY: 6, button: "down", selectedIds: ["x"] },
-        { roomSessionId: "nocursor", name: "Idle", color: "#333", cursorX: null, cursorY: null, button: "up", selectedIds: [] },
+        {
+          roomSessionId: "me",
+          name: "Me",
+          color: "#111",
+          cursorX: 0,
+          cursorY: 0,
+          button: "up",
+          selectedIds: [],
+        },
+        {
+          roomSessionId: "them",
+          name: "Them",
+          color: "#222",
+          cursorX: 5,
+          cursorY: 6,
+          button: "down",
+          selectedIds: ["x"],
+        },
+        {
+          roomSessionId: "nocursor",
+          name: "Idle",
+          color: "#333",
+          cursorX: null,
+          cursorY: null,
+          button: "up",
+          selectedIds: [],
+        },
       ],
       "me",
     );
@@ -189,7 +273,9 @@ describe("buildCollaboratorEntries", () => {
 
 describe("diffElementsForBroadcast", () => {
   it("returns only elements that advanced versus the known map", () => {
-    const known = new Map<string, ElementVersion>([["a", { version: 2, versionNonce: 1 }]]);
+    const known = new Map<string, ElementVersion>([
+      ["a", { version: 2, versionNonce: 1 }],
+    ]);
     const changed = diffElementsForBroadcast(
       [
         { id: "a", version: 2, versionNonce: 1 }, // unchanged

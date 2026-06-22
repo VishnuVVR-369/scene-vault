@@ -1,6 +1,15 @@
 "use client";
 
-import { ArrowLeft, Check, CloudUpload, Loader2, Pencil, Share2, Trash2, TriangleAlert } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  CloudUpload,
+  Loader2,
+  Pencil,
+  Share2,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -54,10 +63,22 @@ function toSceneBundle(bundle: SnapshotBundle): SceneBundle {
 
 function SaveStatus({ state }: { state: SaveState }) {
   const config = {
-    idle: { icon: CloudUpload, label: "Ready", className: "text-muted-foreground" },
-    saving: { icon: Loader2, label: "Saving…", className: "text-muted-foreground" },
+    idle: {
+      icon: CloudUpload,
+      label: "Ready",
+      className: "text-muted-foreground",
+    },
+    saving: {
+      icon: Loader2,
+      label: "Saving…",
+      className: "text-muted-foreground",
+    },
     saved: { icon: Check, label: "Saved", className: "text-[var(--chart-3)]" },
-    error: { icon: TriangleAlert, label: "Save failed", className: "text-destructive" },
+    error: {
+      icon: TriangleAlert,
+      label: "Save failed",
+      className: "text-destructive",
+    },
   }[state];
   const Icon = config.icon;
 
@@ -100,18 +121,25 @@ function EditorContent({ sceneId }: { sceneId: string }) {
       return;
     }
     loadedSceneIdRef.current = sceneId;
-    void library.loadSceneBundle(sceneId).then(setBundle).catch(() => {
-      loadedSceneIdRef.current = null;
-      setSaveStatus("error");
-    });
+    void library
+      .loadSceneBundle(sceneId)
+      .then(setBundle)
+      .catch(() => {
+        loadedSceneIdRef.current = null;
+        setSaveStatus("error");
+      });
   }, [library, sceneId]);
 
   const remote = shouldUseRemoteData;
   const canUseLive =
-    remote && bundle !== null && bundle.elements.length <= MAX_ELEMENTS_PER_SCENE;
+    remote &&
+    bundle !== null &&
+    bundle.elements.length <= MAX_ELEMENTS_PER_SCENE;
 
   const contentHash =
-    savedContentHash?.sceneId === sceneId ? savedContentHash.hash : (scene?.contentHash ?? null);
+    savedContentHash?.sceneId === sceneId
+      ? savedContentHash.hash
+      : (scene?.contentHash ?? null);
 
   // `library` is a new object on every Convex update, so keep collab callbacks
   // stable via a ref to avoid re-running the room's effects each render.
@@ -191,7 +219,12 @@ function EditorContent({ sceneId }: { sceneId: string }) {
   return (
     <main className="flex h-screen min-h-screen flex-col overflow-hidden bg-background">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-3">
-        <Button asChild size="icon" variant="ghost" aria-label="Back to library">
+        <Button
+          asChild
+          size="icon"
+          variant="ghost"
+          aria-label="Back to library"
+        >
           <Link href="/dashboard">
             <ArrowLeft />
           </Link>

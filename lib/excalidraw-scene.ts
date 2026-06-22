@@ -55,7 +55,9 @@ export function sanitizeExcalidrawAppState(
   appState: Record<string, unknown>,
 ): Record<string, unknown> {
   return Object.fromEntries(
-    Object.entries(appState).filter(([key]) => !EPHEMERAL_APP_STATE_KEYS.has(key)),
+    Object.entries(appState).filter(
+      ([key]) => !EPHEMERAL_APP_STATE_KEYS.has(key),
+    ),
   );
 }
 

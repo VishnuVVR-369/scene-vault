@@ -8,7 +8,11 @@ vi.mock("@excalidraw/excalidraw/index.css", () => ({}));
 vi.mock("next/dynamic", () => ({
   default: () =>
     function MockExcalidraw(props: {
-      onChange?: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, unknown>) => void;
+      onChange?: (
+        elements: unknown[],
+        appState: Record<string, unknown>,
+        files: Record<string, unknown>,
+      ) => void;
       viewModeEnabled?: boolean;
     }) {
       return (

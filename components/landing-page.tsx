@@ -10,11 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import {
-  MarkerCircle,
-  ScribbleUnderline,
-  Wordmark,
-} from "@/components/brand";
+import { MarkerCircle, ScribbleUnderline, Wordmark } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 
@@ -168,19 +164,21 @@ function HeroMock() {
         <div className="grid grid-cols-[120px_1fr] sm:grid-cols-[150px_1fr]">
           {/* Sidebar */}
           <div className="hidden flex-col gap-1 border-r border-border bg-sidebar/60 p-3 sm:flex">
-            {["All scenes", "Product", "Personal", "Archive"].map((label, i) => (
-              <div
-                key={label}
-                className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-                  i === 1
-                    ? "bg-primary/15 text-primary"
-                    : "text-muted-foreground"
-                }`}
-              >
-                <FolderTree className="size-3.5" />
-                {label}
-              </div>
-            ))}
+            {["All scenes", "Product", "Personal", "Archive"].map(
+              (label, i) => (
+                <div
+                  key={label}
+                  className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                    i === 1
+                      ? "bg-primary/15 text-primary"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  <FolderTree className="size-3.5" />
+                  {label}
+                </div>
+              ),
+            )}
           </div>
 
           {/* Scene grid */}
@@ -271,12 +269,16 @@ function FeatureCard({
     <div className="sketch-card bg-card p-6 transition-transform duration-200 hover:-translate-y-1 hover:-rotate-1">
       <span
         className="mb-4 inline-flex size-11 items-center justify-center rounded-xl"
-        style={{ backgroundColor: `color-mix(in oklch, ${color} 18%, transparent)` }}
+        style={{
+          backgroundColor: `color-mix(in oklch, ${color} 18%, transparent)`,
+        }}
       >
         <Icon className="size-5" style={{ color }} />
       </span>
       <h3 className="font-display text-lg font-bold">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{body}</p>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+        {body}
+      </p>
     </div>
   );
 }
@@ -433,8 +435,8 @@ export function LandingPage() {
                 Bring order to the chaos
               </h2>
               <p className="mx-auto mt-3 max-w-md text-primary-foreground/80">
-                Give your next idea a home before it gets lost. It takes about ten
-                seconds to start.
+                Give your next idea a home before it gets lost. It takes about
+                ten seconds to start.
               </p>
               <div className="mt-8 flex justify-center">
                 <Button

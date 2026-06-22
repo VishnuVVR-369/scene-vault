@@ -78,9 +78,7 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).length;
 }
 
-export type ValidationResult =
-  | { ok: true }
-  | { ok: false; reason: string };
+export type ValidationResult = { ok: true } | { ok: false; reason: string };
 
 /** Pull a normalized {elementId, version, versionNonce, data} from a raw element. */
 export function extractRoomElement(element: unknown): RoomElementInput | null {
@@ -99,7 +97,10 @@ export function extractRoomElement(element: unknown): RoomElementInput | null {
   }
   // versionNonce can be absent on freshly hand-built elements; default to 0 so
   // tie-breaks are still deterministic.
-  const nonce = typeof versionNonce === "number" && Number.isFinite(versionNonce) ? versionNonce : 0;
+  const nonce =
+    typeof versionNonce === "number" && Number.isFinite(versionNonce)
+      ? versionNonce
+      : 0;
   return { elementId: id, data: element, version, versionNonce: nonce };
 }
 
@@ -179,7 +180,11 @@ export function sanitizeSelectedIds(ids: unknown): string[] {
   }
   const out: string[] = [];
   for (const id of ids) {
-    if (typeof id === "string" && id.length > 0 && id.length <= MAX_ELEMENT_ID_LENGTH) {
+    if (
+      typeof id === "string" &&
+      id.length > 0 &&
+      id.length <= MAX_ELEMENT_ID_LENGTH
+    ) {
       out.push(id);
     }
     if (out.length >= MAX_SELECTED_IDS) {
@@ -220,7 +225,10 @@ export function consumeToken(
   const prevTokens = prev ? prev.tokens : config.capacity;
   const prevAt = prev ? prev.updatedAt : now;
   const elapsedSec = Math.max(0, now - prevAt) / 1000;
-  const refilled = Math.min(config.capacity, prevTokens + elapsedSec * config.ratePerSec);
+  const refilled = Math.min(
+    config.capacity,
+    prevTokens + elapsedSec * config.ratePerSec,
+  );
   if (refilled < 1) {
     return { allowed: false, tokens: refilled, updatedAt: now };
   }
@@ -237,7 +245,10 @@ export function consumeToken(
  * client from presence, so it needs no server-side election state and
  * re-elects automatically when that client leaves.
  */
-export function isSnapshotter(mySessionId: string, activeSessionIds: string[]): boolean {
+export function isSnapshotter(
+  mySessionId: string,
+  activeSessionIds: string[],
+): boolean {
   if (activeSessionIds.length === 0) {
     return false;
   }
@@ -250,7 +261,10 @@ export function isSnapshotter(mySessionId: string, activeSessionIds: string[]): 
   return mySessionId === min;
 }
 
-export function isHydrationClaimStale(startedAt: number | null, now: number): boolean {
+export function isHydrationClaimStale(
+  startedAt: number | null,
+  now: number,
+): boolean {
   if (startedAt === null) {
     return true;
   }
@@ -286,7 +300,10 @@ export function roomIsCollectable(args: {
   if (args.hasActivePresence) {
     return false;
   }
-  if (args.lastPresenceAt !== null && args.now - args.lastPresenceAt < ROOM_IDLE_GRACE_MS) {
+  if (
+    args.lastPresenceAt !== null &&
+    args.now - args.lastPresenceAt < ROOM_IDLE_GRACE_MS
+  ) {
     return false;
   }
   return !roomIsDirty(args.maxElementUpdatedAt, args.snapshotMaxUpdatedAt);
@@ -337,7 +354,13 @@ export function buildCollaboratorEntries(
       username: row.name,
       color: { background: row.color, stroke: row.color },
       ...(row.cursorX !== null && row.cursorY !== null
-        ? { pointer: { x: row.cursorX, y: row.cursorY, tool: "pointer" as const } }
+        ? {
+            pointer: {
+              x: row.cursorX,
+              y: row.cursorY,
+              tool: "pointer" as const,
+            },
+          }
         : {}),
       button: row.button,
       selectedElementIds,

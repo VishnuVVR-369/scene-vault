@@ -81,7 +81,9 @@ export const cleanup = internalMutation({
     for (const mode of ["view", "edit"] as const) {
       const shares = await ctx.db
         .query("sceneShares")
-        .withIndex("by_scene_mode", (q) => q.eq("sceneId", sceneId).eq("mode", mode))
+        .withIndex("by_scene_mode", (q) =>
+          q.eq("sceneId", sceneId).eq("mode", mode),
+        )
         .collect();
       for (const share of shares) {
         await ctx.db.delete(share._id);

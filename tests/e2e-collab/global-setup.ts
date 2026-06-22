@@ -12,6 +12,9 @@ export default function globalSetup() {
   const sceneId = out.trim().split("\n").pop()!.replace(/"/g, "");
   const dir = path.resolve("tests/e2e-collab");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, ".fixture.json"), JSON.stringify({ sceneId, token }));
+  writeFileSync(
+    path.join(dir, ".fixture.json"),
+    JSON.stringify({ sceneId, token }),
+  );
   console.log(`[collab e2e] seeded scene ${sceneId}`);
 }

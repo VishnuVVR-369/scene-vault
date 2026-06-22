@@ -1,6 +1,11 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useSyncExternalStore,
+} from "react";
 
 export type Theme = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";

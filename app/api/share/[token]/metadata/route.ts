@@ -1,4 +1,7 @@
-import { referrerSafeHeaders, requireSharedSceneAccess } from "@/lib/shared-scene-access";
+import {
+  referrerSafeHeaders,
+  requireSharedSceneAccess,
+} from "@/lib/shared-scene-access";
 
 type ShareRouteContext = {
   params: Promise<{ token: string }>;

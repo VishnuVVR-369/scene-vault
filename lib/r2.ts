@@ -83,7 +83,10 @@ export async function createSceneUploadUrl(args: {
   return { key, url };
 }
 
-export async function createSceneDownloadUrl(args: { ownerId: string; sceneId: string }) {
+export async function createSceneDownloadUrl(args: {
+  ownerId: string;
+  sceneId: string;
+}) {
   const { client, bucket } = getR2Client();
   const key = buildSceneObjectKey(args.ownerId, args.sceneId);
   const url = await getSignedUrl(
@@ -139,7 +142,10 @@ export async function getSceneThumbnailObject(args: {
   }
 }
 
-export async function deleteSceneObject(args: { ownerId: string; sceneId: string }) {
+export async function deleteSceneObject(args: {
+  ownerId: string;
+  sceneId: string;
+}) {
   const { client, bucket } = getR2Client();
   const key = buildSceneObjectKey(args.ownerId, args.sceneId);
   const thumbnailKey = buildSceneThumbnailObjectKey(args.ownerId, args.sceneId);
@@ -180,8 +186,14 @@ export async function copySceneThumbnailObject(args: {
   targetSceneId: string;
 }) {
   const { client, bucket } = getR2Client();
-  const sourceKey = buildSceneThumbnailObjectKey(args.sourceOwnerId, args.sourceSceneId);
-  const targetKey = buildSceneThumbnailObjectKey(args.targetOwnerId, args.targetSceneId);
+  const sourceKey = buildSceneThumbnailObjectKey(
+    args.sourceOwnerId,
+    args.sourceSceneId,
+  );
+  const targetKey = buildSceneThumbnailObjectKey(
+    args.targetOwnerId,
+    args.targetSceneId,
+  );
   try {
     await client.send(
       new CopyObjectCommand({

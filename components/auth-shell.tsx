@@ -39,7 +39,10 @@ export function AuthShell({
           </h1>
           <ul className="mt-8 space-y-3">
             {HIGHLIGHTS.map((item) => (
-              <li key={item} className="flex items-center gap-3 text-muted-foreground">
+              <li
+                key={item}
+                className="flex items-center gap-3 text-muted-foreground"
+              >
                 <CheckCircle2 className="size-5 shrink-0 text-primary" />
                 {item}
               </li>
@@ -55,7 +58,12 @@ export function AuthShell({
       {/* Form column */}
       <main className="bg-paper-dots relative flex flex-col px-5 lg:bg-none">
         <div className="flex h-16 items-center justify-between">
-          <Button asChild variant="ghost" size="sm" className="-ml-2 h-9 px-2.5">
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+            className="-ml-2 h-9 px-2.5"
+          >
             <Link href="/">
               <ArrowLeft />
               Back home
@@ -80,7 +88,9 @@ export function AuthShell({
 export function AuthNotConfigured({ action }: { action: string }) {
   return (
     <div className="sketch-card bg-card p-8 text-center">
-      <h2 className="font-display text-xl font-bold">Auth isn&apos;t set up yet</h2>
+      <h2 className="font-display text-xl font-bold">
+        Auth isn&apos;t set up yet
+      </h2>
       <p className="mt-2 text-sm text-muted-foreground">
         Add your Clerk keys to enable {action}. You can still explore the app in
         local mode.
