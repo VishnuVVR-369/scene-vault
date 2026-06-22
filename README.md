@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SceneVault
 
-## Getting Started
+SceneVault is a personal Excalidraw library service with nested folders, unlimited scenes, title/folder search, last-save persistence, and permanent deletes.
 
-First, run the development server:
+## Stack
+
+- Next.js App Router
+- Excalidraw React package
+- Clerk auth
+- Convex metadata database
+- Cloudflare R2 scene bundle storage
+- Zod validation at app, storage, and client data boundaries
+
+## Local Demo Mode
+
+Use local demo mode when Clerk, Convex, and R2 are not configured yet. It stores scenes in browser `localStorage`.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+NEXT_PUBLIC_LOCAL_DATA=1 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000/dashboard.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Production Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Copy `.env.example` to `.env.local`.
+2. Fill Clerk keys and URLs.
+3. Link Convex with `pnpm exec convex dev`, then set `NEXT_PUBLIC_CONVEX_URL` and `CLERK_FRONTEND_API_URL`.
+4. Create an R2 bucket and S3 API token, then fill the `CLOUDFLARE_R2_*` variables.
+5. Configure R2 CORS to allow browser `PUT` uploads from your app origin.
 
-## Learn More
+Convex `_generated` files are not created until the project is linked. Run `pnpm exec convex dev` before deploying the Convex backend.
 
-To learn more about Next.js, take a look at the following resources:
+## Verification
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+pnpm test
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm e2e
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The Playwright suite runs in local demo mode and covers nested folders, folder-name search, scene creation, editor load, autosave, and rename persistence.
