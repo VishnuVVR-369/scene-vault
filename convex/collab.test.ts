@@ -431,6 +431,15 @@ describe("collab backend", () => {
       elements: [el("a", 1, 1)],
     });
     const [stored] = (await owner(t).query(api.collab.getRoomElements, { sceneId }))!;
+    const uncommitted = await owner(t).mutation(api.collab.markRoomSnapshot, {
+      sceneId,
+      roomSessionId: join.roomSessionId,
+      sessionSecret: join.sessionSecret,
+      snapshotHash: "current",
+      snapshotMaxUpdatedAt: stored.updatedAt,
+    });
+    expect(uncommitted).toEqual({ marked: false, reason: "uncommitted" });
+
     await t.run(async (ctx) => ctx.db.patch(sceneId, { contentHash: "current" }));
     await expect(
       owner(t).mutation(api.collab.markRoomSnapshot, {
@@ -442,13 +451,14 @@ describe("collab backend", () => {
       }),
     ).rejects.toThrow();
 
-    await owner(t).mutation(api.collab.markRoomSnapshot, {
+    const marked = await owner(t).mutation(api.collab.markRoomSnapshot, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
       snapshotHash: "current",
       snapshotMaxUpdatedAt: stored.updatedAt,
     });
+    expect(marked).toEqual({ marked: true, reason: null });
     const room = await t.run(async (ctx) =>
       ctx.db
         .query("liveRooms")

@@ -488,6 +488,18 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
     }, ELEMENT_FLUSH_MS);
   }, [flush]);
 
+  const doSnapshotRef = useRef<() => void>(() => {});
+
+  const scheduleSnapshotRetry = useCallback(() => {
+    if (snapshotTimerRef.current) {
+      return;
+    }
+    snapshotTimerRef.current = setTimeout(() => {
+      snapshotTimerRef.current = null;
+      void doSnapshotRef.current();
+    }, SNAPSHOT_DEBOUNCE_MS);
+  }, []);
+
   // ---- Snapshot to R2 (snapshotter only) ----------------------------------
   const doSnapshot = useCallback(async (options?: { force?: boolean }) => {
     const editor = apiRef.current;
@@ -514,17 +526,35 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
         files: editor.getFiles(),
       });
       if (hash) {
-        lastSnapshotSigRef.current = sig;
-        await markRoomSnapshot({
+        const result = await markRoomSnapshot({
           ...base,
           snapshotHash: hash,
           snapshotMaxUpdatedAt: maxUpdatedAt,
         });
+        if (result.marked) {
+          lastSnapshotSigRef.current = sig;
+        } else {
+          scheduleSnapshotRetry();
+        }
+      } else {
+        scheduleSnapshotRetry();
       }
     } catch {
       // Stays dirty -> retried on the next change / by the next snapshotter.
+      scheduleSnapshotRetry();
     }
-  }, [baseMutationArgs, canSnapshot, onSnapshot, markRoomSnapshot, roomElements]);
+  }, [
+    baseMutationArgs,
+    canSnapshot,
+    onSnapshot,
+    markRoomSnapshot,
+    roomElements,
+    scheduleSnapshotRetry,
+  ]);
+
+  useEffect(() => {
+    doSnapshotRef.current = () => void doSnapshot();
+  }, [doSnapshot]);
 
   const scheduleSnapshot = useCallback(() => {
     if (snapshotTimerRef.current) {

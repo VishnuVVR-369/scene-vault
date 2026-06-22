@@ -714,9 +714,6 @@ export const markRoomSnapshot = mutation({
     if (!auth) {
       throw new Error("Not authorized");
     }
-    if (auth.scene.contentHash !== args.snapshotHash) {
-      throw new Error("Snapshot has not been committed");
-    }
     if (
       args.snapshotMaxUpdatedAt !== undefined &&
       (!Number.isFinite(args.snapshotMaxUpdatedAt) || args.snapshotMaxUpdatedAt < 0)
@@ -725,7 +722,10 @@ export const markRoomSnapshot = mutation({
     }
     const room = await getRoom(ctx, args.sceneId);
     if (!roomIsActive(room)) {
-      return null;
+      return { marked: false, reason: "inactive" };
+    }
+    if (auth.scene.contentHash !== args.snapshotHash) {
+      return { marked: false, reason: "uncommitted" };
     }
     const { maxElementUpdatedAt } = await getMaxElementUpdatedAt(ctx, args.sceneId);
     const serverWatermark = maxElementUpdatedAt ?? 0;
@@ -739,14 +739,14 @@ export const markRoomSnapshot = mutation({
       room!.snapshotMaxUpdatedAt !== null &&
       serverWatermark < room!.snapshotMaxUpdatedAt
     ) {
-      return null;
+      return { marked: false, reason: "stale" };
     }
     await ctx.db.patch(room!._id, {
       snapshotHash: args.snapshotHash,
       snapshotMaxUpdatedAt: serverWatermark,
       snapshotAt: Date.now(),
     });
-    return null;
+    return { marked: true, reason: null };
   },
 });
 
