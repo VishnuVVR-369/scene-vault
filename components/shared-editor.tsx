@@ -1,15 +1,20 @@
 "use client";
 
-import { ArrowLeft, Check, CloudUpload, Copy, Loader2, TriangleAlert } from "lucide-react";
+import { useUser } from "@clerk/nextjs";
+import { ArrowLeft, Copy, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { LogoMark } from "@/components/brand";
+import { CollaborativeCanvas } from "@/components/collab/collaborative-canvas";
 import { ExcalidrawCanvas } from "@/components/excalidraw-canvas";
+import type { SnapshotBundle } from "@/components/collab/use-room";
 import { ThemeToggle } from "@/components/theme-toggle";
+import type { BinaryFileData } from "@excalidraw/excalidraw/types";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MAX_ELEMENTS_PER_SCENE } from "@/convex/collabLogic";
 import {
   createEmptySceneBundle,
   sharedSceneMetadataSchema,
@@ -20,34 +25,9 @@ import {
 import { normalizeSceneBundle } from "@/lib/excalidraw-scene";
 import { sha256Hex } from "@/lib/hash";
 import { renderSceneThumbnailBlob } from "@/lib/thumbnail";
-import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 
 type SharedEditorMode = "view" | "edit";
-type SaveState = "idle" | "saving" | "saved" | "error";
-
-function SaveStatus({ state }: { state: SaveState }) {
-  const config = {
-    idle: { icon: CloudUpload, label: "Ready", className: "text-muted-foreground" },
-    saving: { icon: Loader2, label: "Saving...", className: "text-muted-foreground" },
-    saved: { icon: Check, label: "Saved", className: "text-[var(--chart-3)]" },
-    error: { icon: TriangleAlert, label: "Save failed", className: "text-destructive" },
-  }[state];
-  const Icon = config.icon;
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2.5 py-1 text-xs font-medium",
-        config.className,
-      )}
-      aria-live="polite"
-    >
-      <Icon className={cn("size-3.5", state === "saving" && "animate-spin")} />
-      {config.label}
-    </span>
-  );
-}
 
 async function fetchJson(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
@@ -55,6 +35,17 @@ async function fetchJson(url: string, init?: RequestInit) {
     throw new Error("Request failed");
   }
   return response.json();
+}
+
+function toSceneBundle(bundle: SnapshotBundle): SceneBundle {
+  return {
+    type: "excalidraw",
+    version: 2,
+    source: "scenevault",
+    elements: bundle.elements as SceneBundle["elements"],
+    appState: bundle.appState,
+    files: bundle.files as SceneBundle["files"],
+  };
 }
 
 export function SharedEditor({
@@ -65,15 +56,16 @@ export function SharedEditor({
   mode: SharedEditorMode;
 }) {
   const router = useRouter();
+  const { isLoaded, isSignedIn } = useUser();
   const { resolvedTheme } = useTheme();
   const [metadata, setMetadata] = useState<SharedSceneMetadata | null>(null);
   const [bundle, setBundle] = useState<SceneBundle | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<SaveState>("idle");
   const [duplicating, setDuplicating] = useState(false);
   const lastSavedHashRef = useRef<string | null>(null);
   const shareBase = useMemo(() => `/api/share/${encodeURIComponent(token)}`, [token]);
   const canEdit = mode === "edit";
+  const canSingleUserEdit = canEdit && isLoaded && Boolean(isSignedIn);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,19 +127,16 @@ export function SharedEditor({
     [shareBase],
   );
 
-  const save = useCallback(
-    async (nextBundle: SceneBundle) => {
-      if (!canEdit) {
-        return;
-      }
-      setSaveStatus("saving");
+  // Persist the live scene to R2 via the share routes (requires sign-in, which
+  // the room enforces by only electing signed-in clients as snapshotters).
+  const onSnapshot = useCallback(
+    async (snapshot: SnapshotBundle): Promise<string | null> => {
       try {
-        const parsed = normalizeSceneBundle(nextBundle);
+        const parsed = normalizeSceneBundle(toSceneBundle(snapshot));
         const serialized = JSON.stringify(parsed);
         const contentHash = await sha256Hex(serialized);
         if (lastSavedHashRef.current === contentHash) {
-          setSaveStatus("saved");
-          return;
+          return contentHash;
         }
         const target = signedStorageTargetSchema.parse(
           await fetchJson(`${shareBase}/upload`, {
@@ -180,12 +169,43 @@ export function SharedEditor({
           }),
         });
         lastSavedHashRef.current = contentHash;
-        setSaveStatus("saved");
+        return contentHash;
       } catch {
-        setSaveStatus("error");
+        return null;
       }
     },
-    [canEdit, shareBase, uploadThumbnail],
+    [shareBase, uploadThumbnail],
+  );
+
+  const onLoadFiles = useCallback(
+    async (fileIds: string[]): Promise<BinaryFileData[]> => {
+      try {
+        const target = signedStorageTargetSchema.parse(
+          await fetchJson(`${shareBase}/download`),
+        );
+        const response = await fetch(target.url);
+        if (!response.ok) {
+          return [];
+        }
+        const downloaded = normalizeSceneBundle(await response.json());
+        const files = downloaded.files as Record<string, BinaryFileData>;
+        return fileIds.map((id) => files[id]).filter(Boolean);
+      } catch {
+        return [];
+      }
+    },
+    [shareBase],
+  );
+
+  const saveSingleUserEdit = useCallback(
+    async (nextBundle: SceneBundle) => {
+      await onSnapshot({
+        elements: nextBundle.elements as never,
+        appState: nextBundle.appState,
+        files: nextBundle.files as SnapshotBundle["files"],
+      });
+    },
+    [onSnapshot],
   );
 
   async function duplicate() {
@@ -256,7 +276,6 @@ export function SharedEditor({
           </p>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          {canEdit ? <SaveStatus state={saveStatus} /> : null}
           <Button
             variant="outline"
             size="sm"
@@ -270,12 +289,24 @@ export function SharedEditor({
         </div>
       </header>
       <section className="min-h-0 flex-1">
-        <ExcalidrawCanvas
-          initialBundle={bundle}
-          onBundleChange={canEdit ? save : undefined}
-          mode={canEdit ? "edit" : "view"}
-          theme={resolvedTheme}
-        />
+        {canEdit && bundle.elements.length <= MAX_ELEMENTS_PER_SCENE ? (
+          <CollaborativeCanvas
+            sceneId={metadata.sceneId}
+            token={token}
+            initialBundle={bundle}
+            contentHash={metadata.contentHash}
+            theme={resolvedTheme}
+            onSnapshot={onSnapshot}
+            onLoadFiles={onLoadFiles}
+          />
+        ) : (
+          <ExcalidrawCanvas
+            initialBundle={bundle}
+            mode={canSingleUserEdit ? "edit" : "view"}
+            onBundleChange={canSingleUserEdit ? saveSingleUserEdit : undefined}
+            theme={resolvedTheme}
+          />
+        )}
       </section>
     </main>
   );

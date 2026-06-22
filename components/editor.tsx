@@ -2,11 +2,20 @@
 
 import { ArrowLeft, Check, CloudUpload, Loader2, Pencil, Share2, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { sha256Hex } from "@/lib/hash";
+import { normalizeSceneBundle } from "@/lib/excalidraw-scene";
 
 import { LogoMark } from "@/components/brand";
+import { CollaborativeCanvas } from "@/components/collab/collaborative-canvas";
 import { ExcalidrawCanvas } from "@/components/excalidraw-canvas";
-import { LibraryProvider, useLibrary } from "@/components/library-provider";
+import {
+  LibraryProvider,
+  shouldUseRemoteData,
+  useLibrary,
+} from "@/components/library-provider";
+import type { SnapshotBundle } from "@/components/collab/use-room";
 import { ShareSceneDialog } from "@/components/share-dialog";
 import { useTheme } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -24,10 +33,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MAX_ELEMENTS_PER_SCENE } from "@/convex/collabLogic";
 import { cn } from "@/lib/utils";
 import { type SceneBundle } from "@/lib/domain";
+import type { BinaryFileData } from "@excalidraw/excalidraw/types";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
+
+function toSceneBundle(bundle: SnapshotBundle): SceneBundle {
+  return {
+    type: "excalidraw",
+    version: 2,
+    source: "scenevault",
+    elements: bundle.elements as SceneBundle["elements"],
+    appState: bundle.appState,
+    files: bundle.files as SceneBundle["files"],
+  };
+}
 
 function SaveStatus({ state }: { state: SaveState }) {
   const config = {
@@ -77,6 +99,36 @@ function EditorContent({ sceneId }: { sceneId: string }) {
       setSaveStatus("error");
     });
   }, [library, sceneId]);
+
+  const remote = shouldUseRemoteData;
+  const liveCollab =
+    remote && (!bundle || bundle.elements.length <= MAX_ELEMENTS_PER_SCENE);
+
+  // `library` is a new object on every Convex update, so keep collab callbacks
+  // stable via a ref to avoid re-running the room's effects each render.
+  const libraryRef = useRef(library);
+  useEffect(() => {
+    libraryRef.current = library;
+  }, [library]);
+
+  const onSnapshot = useCallback(
+    async (snapshot: SnapshotBundle) => {
+      const sceneBundle = normalizeSceneBundle(toSceneBundle(snapshot));
+      const hash = await sha256Hex(JSON.stringify(sceneBundle));
+      await libraryRef.current.saveSceneBundle(sceneId, sceneBundle);
+      return hash;
+    },
+    [sceneId],
+  );
+
+  const onLoadFiles = useCallback(
+    async (fileIds: string[]): Promise<BinaryFileData[]> => {
+      const loaded = await libraryRef.current.loadSceneBundle(sceneId);
+      const files = loaded.files as Record<string, BinaryFileData>;
+      return fileIds.map((id) => files[id]).filter(Boolean);
+    },
+    [sceneId],
+  );
 
   if (!library.ready) {
     return (
@@ -143,7 +195,7 @@ function EditorContent({ sceneId }: { sceneId: string }) {
           <Pencil className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-0" />
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          <SaveStatus state={saveStatus} />
+          {liveCollab ? null : <SaveStatus state={saveStatus} />}
           <ThemeToggle />
           <Button
             size="icon"
@@ -191,11 +243,22 @@ function EditorContent({ sceneId }: { sceneId: string }) {
       </header>
       <section className="min-h-0 flex-1">
         {bundle ? (
-          <ExcalidrawCanvas
-            initialBundle={bundle}
-            onBundleChange={save}
-            theme={resolvedTheme}
-          />
+          liveCollab ? (
+            <CollaborativeCanvas
+              sceneId={sceneId}
+              initialBundle={bundle}
+              contentHash={scene.contentHash}
+              theme={resolvedTheme}
+              onSnapshot={onSnapshot}
+              onLoadFiles={onLoadFiles}
+            />
+          ) : (
+            <ExcalidrawCanvas
+              initialBundle={bundle}
+              onBundleChange={save}
+              theme={resolvedTheme}
+            />
+          )
         ) : (
           <Skeleton className="h-full rounded-none" />
         )}

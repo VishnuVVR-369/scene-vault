@@ -8,7 +8,11 @@
  * @module
  */
 
+import type * as collab from "../collab.js";
+import type * as collabLogic from "../collabLogic.js";
+import type * as crons from "../crons.js";
 import type * as library from "../library.js";
+import type * as testSeed from "../testSeed.js";
 import type * as validation from "../validation.js";
 
 import type {
@@ -18,7 +22,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  collab: typeof collab;
+  collabLogic: typeof collabLogic;
+  crons: typeof crons;
   library: typeof library;
+  testSeed: typeof testSeed;
   validation: typeof validation;
 }>;
 

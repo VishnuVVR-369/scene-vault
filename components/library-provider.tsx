@@ -77,7 +77,7 @@ type LibraryContextValue = {
 
 const LibraryContext = createContext<LibraryContextValue | null>(null);
 
-const shouldUseRemoteData =
+export const shouldUseRemoteData =
   process.env.NEXT_PUBLIC_LOCAL_DATA !== "1" &&
   Boolean(
     process.env.NEXT_PUBLIC_CONVEX_URL &&

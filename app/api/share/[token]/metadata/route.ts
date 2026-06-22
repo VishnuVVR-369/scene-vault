@@ -8,7 +8,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_request: Request, ctx: ShareRouteContext) {
   const { token } = await ctx.params;
-  const authResult = await requireSharedSceneAccess(token);
+  // Reads are gated by the share token alone so anonymous guests can join an
+  // edit room. Writes (upload/commit) still require sign-in.
+  const authResult = await requireSharedSceneAccess(token, {
+    requireAuthForEdit: false,
+  });
   if (!authResult.ok) {
     return authResult.response;
   }

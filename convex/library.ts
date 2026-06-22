@@ -68,6 +68,48 @@ async function deleteSharesForScene(db: DatabaseWriter, sceneId: Id<"scenes">) {
   }
 }
 
+async function deleteCollabRowsForScene(db: DatabaseWriter, sceneId: Id<"scenes">) {
+  const elements = await db
+    .query("roomElements")
+    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
+    .collect();
+  for (const element of elements) {
+    await db.delete(element._id);
+  }
+
+  const presenceRows = await db
+    .query("presence")
+    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
+    .collect();
+  for (const presence of presenceRows) {
+    await db.delete(presence._id);
+  }
+
+  const sessions = await db
+    .query("roomSessions")
+    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
+    .collect();
+  for (const session of sessions) {
+    await db.delete(session._id);
+  }
+
+  const rateLimits = await db
+    .query("collabRateLimits")
+    .withIndex("by_key", (q) => q.eq("sceneId", sceneId))
+    .collect();
+  for (const rateLimit of rateLimits) {
+    await db.delete(rateLimit._id);
+  }
+
+  const room = await db
+    .query("liveRooms")
+    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
+    .unique();
+  if (room) {
+    await db.delete(room._id);
+  }
+}
+
 async function getShareSceneByToken(db: DatabaseReader, token: string) {
   const input = shareTokenArgsSchema.parse({ token });
   const share = await db
@@ -372,6 +414,7 @@ export const deleteFolder = mutation({
     for (const scene of scenes) {
       if (scene.folderId && folderIds.has(scene.folderId)) {
         await deleteSharesForScene(ctx.db, scene._id);
+        await deleteCollabRowsForScene(ctx.db, scene._id);
         await ctx.db.delete(scene._id);
       }
     }
@@ -449,6 +492,7 @@ export const deleteScene = mutation({
       throw new Error("Scene not found");
     }
     await deleteSharesForScene(ctx.db, args.sceneId);
+    await deleteCollabRowsForScene(ctx.db, args.sceneId);
     await ctx.db.delete(args.sceneId);
   },
 });

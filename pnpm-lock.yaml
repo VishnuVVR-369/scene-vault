@@ -81,6 +81,9 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.2.3(@types/react@19.2.17)
+      convex-test:
+        specifier: ^0.0.53
+        version: 0.0.53(convex@1.41.0(@clerk/react@6.10.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4))
       eslint:
         specifier: ^9
         version: 9.39.4(jiti@2.7.0)
@@ -2895,6 +2898,11 @@ packages:
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
+
+  convex-test@0.0.53:
+    resolution: {integrity: sha512-bouZQTnTvZi8IHljHL++yClj1vcV+/9ZxEcd8JZz7RDxOfPkRKrkMgkk/xlX4M1EAiwcEJPNiQE7VJFvDM3lCQ==}
+    peerDependencies:
+      convex: ^1.32.0
 
   convex@1.41.0:
     resolution: {integrity: sha512-euxVf6yfpB7/VGKOobkLgjpbJidsUgW+b0ezonEyCUPqlpHFwR4/yIiI1hjjErzraiw91GxrtxpXQClMLNqU+w==}
@@ -8470,6 +8478,10 @@ snapshots:
   content-type@2.0.0: {}
 
   convert-source-map@2.0.0: {}
+
+  convex-test@0.0.53(convex@1.41.0(@clerk/react@6.10.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)):
+    dependencies:
+      convex: 1.41.0(@clerk/react@6.10.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)
 
   convex@1.41.0(@clerk/react@6.10.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4):
     dependencies:

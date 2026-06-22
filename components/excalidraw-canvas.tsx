@@ -1,13 +1,16 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import "@excalidraw/excalidraw/index.css";
 import type {
+  AppState,
   BinaryFiles,
+  ExcalidrawImperativeAPI,
   ExcalidrawInitialDataState,
 } from "@excalidraw/excalidraw/types";
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 
 import { Button } from "@/components/ui/button";
 import { type SceneBundle } from "@/lib/domain";
@@ -23,6 +26,18 @@ type ExcalidrawCanvasProps = {
   onBundleChange?: (bundle: SceneBundle) => void;
   theme?: "light" | "dark";
   mode?: "view" | "edit";
+  // Live-collaboration hooks. When provided the canvas streams raw changes and
+  // pointer moves instead of (or alongside) the debounced single-user save.
+  onApi?: (api: ExcalidrawImperativeAPI) => void;
+  onSceneChange?: (
+    elements: readonly ExcalidrawElement[],
+    appState: AppState,
+    files: BinaryFiles,
+  ) => void;
+  onPointerUpdate?: (payload: {
+    pointer: { x: number; y: number; tool: "pointer" | "laser" };
+    button: "down" | "up";
+  }) => void;
 };
 
 export function ExcalidrawCanvas({
@@ -30,6 +45,9 @@ export function ExcalidrawCanvas({
   onBundleChange,
   theme,
   mode = "edit",
+  onApi,
+  onSceneChange,
+  onPointerUpdate,
 }: ExcalidrawCanvasProps) {
   const parsedInitialBundle = useMemo(
     () => normalizeSceneBundle(initialBundle),
@@ -38,7 +56,20 @@ export function ExcalidrawCanvas({
   const bundleRef = useRef(parsedInitialBundle);
   const lastSignatureRef = useRef(sceneContentSignature(parsedInitialBundle));
   const emitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const e2eMode = process.env.NEXT_PUBLIC_E2E_MODE === "1" && mode === "edit";
+
+  const handleApi = useCallback(
+    (api: ExcalidrawImperativeAPI) => {
+      apiRef.current = api;
+      if (process.env.NEXT_PUBLIC_E2E_MODE === "1" && typeof window !== "undefined") {
+        (window as unknown as { __excalidrawApi?: ExcalidrawImperativeAPI }).__excalidrawApi =
+          api;
+      }
+      onApi?.(api);
+    },
+    [onApi],
+  );
 
   // Drop any pending save if the component unmounts so a late timer can't fire
   // `onBundleChange` after the editor has navigated away.
@@ -70,40 +101,46 @@ export function ExcalidrawCanvas({
           size="sm"
           variant="secondary"
           onClick={() => {
-            const currentBundle = bundleRef.current;
+            const shape = {
+              id: `shape-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+              type: "rectangle",
+              x: 100 + Math.floor(Math.random() * 200),
+              y: 100 + Math.floor(Math.random() * 200),
+              width: 120,
+              height: 80,
+              angle: 0,
+              strokeColor: "#1e1e1e",
+              backgroundColor: "transparent",
+              fillStyle: "hachure",
+              strokeWidth: 2,
+              strokeStyle: "solid",
+              roughness: 1,
+              opacity: 100,
+              groupIds: [],
+              frameId: null,
+              roundness: null,
+              seed: Math.floor(Math.random() * 1e6),
+              version: 1,
+              versionNonce: Math.floor(Math.random() * 1e6),
+              isDeleted: false,
+              boundElements: null,
+              updated: Date.now(),
+              link: null,
+              locked: false,
+              index: "a0",
+            };
+            // Collaboration: add via the real API so onChange -> live sync fires.
+            const api = apiRef.current;
+            if (onSceneChange && api) {
+              api.updateScene({
+                elements: [...api.getSceneElementsIncludingDeleted(), shape as never],
+              });
+              return;
+            }
+            // Single-user fallback: drive the debounced save directly.
             const next = normalizeSceneBundle({
-              ...currentBundle,
-              elements: [
-                ...currentBundle.elements,
-                {
-                  id: `shape-${Date.now()}`,
-                  type: "rectangle",
-                  x: 100,
-                  y: 100,
-                  width: 120,
-                  height: 80,
-                  angle: 0,
-                  strokeColor: "#1e1e1e",
-                  backgroundColor: "transparent",
-                  fillStyle: "hachure",
-                  strokeWidth: 2,
-                  strokeStyle: "solid",
-                  roughness: 1,
-                  opacity: 100,
-                  groupIds: [],
-                  frameId: null,
-                  roundness: null,
-                  seed: 1,
-                  version: 1,
-                  versionNonce: 1,
-                  isDeleted: false,
-                  boundElements: null,
-                  updated: Date.now(),
-                  link: null,
-                  locked: false,
-                  index: "a0",
-                },
-              ],
+              ...bundleRef.current,
+              elements: [...bundleRef.current.elements, shape],
             });
             bundleRef.current = next;
             lastSignatureRef.current = sceneContentSignature(next);
@@ -117,8 +154,20 @@ export function ExcalidrawCanvas({
         initialData={initialData}
         theme={theme}
         viewModeEnabled={mode === "view"}
+        excalidrawAPI={handleApi}
+        onPointerUpdate={
+          onPointerUpdate
+            ? (payload) =>
+                onPointerUpdate({ pointer: payload.pointer, button: payload.button })
+            : undefined
+        }
         onChange={(elements, appState, files) => {
-          if (mode !== "edit" || !onBundleChange) {
+          if (mode !== "edit") {
+            return;
+          }
+          // Live collaboration: forward every change immediately.
+          onSceneChange?.(elements, appState, files);
+          if (!onBundleChange) {
             return;
           }
           const next = normalizeSceneBundle({
