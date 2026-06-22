@@ -11,6 +11,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  Loader2,
   MoreHorizontal,
   Search,
   Share2,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { Wordmark } from "@/components/brand";
 import { LibraryProvider, useLibrary } from "@/components/library-provider";
@@ -58,6 +59,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/components/ui/toast";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { type SceneMetadata } from "@/lib/domain";
 import { filterScenes, getFolderPath } from "@/lib/library-state";
@@ -147,6 +149,10 @@ function DashboardContent() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
   const searchRef = useRef<HTMLInputElement>(null);
+  // Filtering runs against a deferred copy of the query so typing stays
+  // responsive even with a large library; the grid dims slightly while stale.
+  const deferredQuery = useDeferredValue(query);
+  const isFiltering = deferredQuery !== query;
 
   // Press "/" anywhere to jump to search — a small power-user nicety.
   useEffect(() => {
@@ -189,8 +195,12 @@ function DashboardContent() {
   }, [library.scenes]);
 
   const visibleScenes = useMemo(
-    () => sortScenes(filterScenes(syntheticState, query, activeFolderId), sort),
-    [activeFolderId, query, sort, syntheticState],
+    () =>
+      sortScenes(
+        filterScenes(syntheticState, deferredQuery, activeFolderId),
+        sort,
+      ),
+    [activeFolderId, deferredQuery, sort, syntheticState],
   );
 
   const folderPath = getFolderPath(syntheticState, activeFolderId);
@@ -386,11 +396,18 @@ function DashboardContent() {
                 </Badge>
               </div>
               {visibleScenes.length ? (
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div
+                  className={`grid gap-4 transition-opacity duration-200 sm:grid-cols-2 xl:grid-cols-3 ${
+                    isFiltering ? "opacity-60" : "opacity-100"
+                  }`}
+                >
                   {visibleScenes.map((scene, index) => (
                     <article
                       key={scene.id}
-                      className={`sketch-card group overflow-hidden bg-card transition-all duration-200 hover:-translate-y-1 ${
+                      style={{
+                        animationDelay: `${Math.min(index, 12) * 30}ms`,
+                      }}
+                      className={`sketch-card animate-card-in group overflow-hidden bg-card transition-all duration-200 hover:-translate-y-1 ${
                         index % 2 === 0 ? "hover:-rotate-1" : "hover:rotate-1"
                       }`}
                     >
@@ -526,13 +543,27 @@ function FolderDialog({
   parentFolderId: string | null;
   onCreate: (name: string, parentFolderId: string | null) => Promise<void>;
 }) {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
 
   async function submit() {
-    await onCreate(name || "New folder", parentFolderId);
-    setName("");
-    setOpen(false);
+    if (creating) return;
+    setCreating(true);
+    try {
+      await onCreate(name || "New folder", parentFolderId);
+      setName("");
+      setOpen(false);
+    } catch {
+      toast({
+        variant: "error",
+        title: "Couldn't create folder",
+        description: "Please try again.",
+      });
+    } finally {
+      setCreating(false);
+    }
   }
 
   return (
@@ -563,7 +594,9 @@ function FolderDialog({
           />
         </div>
         <DialogFooter>
-          <Button onClick={submit}>Create folder</Button>
+          <Button onClick={submit} disabled={creating}>
+            {creating ? "Creating…" : "Create folder"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -578,6 +611,7 @@ function SceneDialog({
   onCreate: (title: string, folderId: string | null) => Promise<string>;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [creating, setCreating] = useState(false);
@@ -591,6 +625,12 @@ function SceneDialog({
       setOpen(false);
       // New scenes exist to be drawn — drop straight into the editor.
       router.push(`/scenes/${sceneId}`);
+    } catch {
+      toast({
+        variant: "error",
+        title: "Couldn't create scene",
+        description: "Please try again.",
+      });
     } finally {
       setCreating(false);
     }
@@ -684,8 +724,27 @@ function RenameFolderDialog({
 
 function FolderActions({ folderId }: { folderId: string }) {
   const library = useLibrary();
+  const toast = useToast();
   const [renameOpen, setRenameOpen] = useState(false);
   const folder = library.folders.find((candidate) => candidate.id === folderId);
+
+  async function rename(name: string) {
+    try {
+      await library.renameFolder(folderId, name);
+      toast({ variant: "success", title: "Folder renamed" });
+    } catch {
+      toast({ variant: "error", title: "Couldn't rename folder" });
+    }
+  }
+
+  async function remove() {
+    try {
+      await library.deleteFolder(folderId);
+      toast({ variant: "success", title: "Folder deleted" });
+    } catch {
+      toast({ variant: "error", title: "Couldn't delete folder" });
+    }
+  }
 
   return (
     <AlertDialog>
@@ -727,7 +786,7 @@ function FolderActions({ folderId }: { folderId: string }) {
         open={renameOpen}
         onOpenChange={setRenameOpen}
         currentName={folder?.name ?? ""}
-        onRename={(name) => void library.renameFolder(folderId, name)}
+        onRename={(name) => void rename(name)}
       />
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -741,7 +800,7 @@ function FolderActions({ folderId }: { folderId: string }) {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={() => library.deleteFolder(folderId)}>
+          <AlertDialogAction onClick={() => void remove()}>
             Delete folder
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -752,7 +811,41 @@ function FolderActions({ folderId }: { folderId: string }) {
 
 function SceneActions({ sceneId }: { sceneId: string }) {
   const library = useLibrary();
+  const toast = useToast();
   const [shareOpen, setShareOpen] = useState(false);
+  // Duplicating can be slow in remote mode (download, copy, re-upload), so we
+  // surface a spinner on the trigger and a toast on completion.
+  const [busy, setBusy] = useState(false);
+
+  async function duplicate() {
+    setBusy(true);
+    try {
+      await library.duplicateScene(sceneId);
+      toast({ variant: "success", title: "Scene duplicated" });
+    } catch {
+      toast({
+        variant: "error",
+        title: "Couldn't duplicate scene",
+        description: "Please try again.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    try {
+      await library.deleteScene(sceneId);
+      toast({ variant: "success", title: "Scene deleted" });
+    } catch {
+      toast({
+        variant: "error",
+        title: "Couldn't delete scene",
+        description: "Please try again.",
+      });
+    }
+  }
+
   return (
     <AlertDialog>
       <DropdownMenu>
@@ -761,9 +854,10 @@ function SceneActions({ sceneId }: { sceneId: string }) {
             aria-label="Scene actions"
             size="icon-sm"
             variant="ghost"
-            className="opacity-60 group-hover:opacity-100"
+            disabled={busy}
+            className="opacity-60 group-hover:opacity-100 aria-expanded:opacity-100"
           >
-            <MoreHorizontal />
+            {busy ? <Loader2 className="animate-spin" /> : <MoreHorizontal />}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -776,7 +870,7 @@ function SceneActions({ sceneId }: { sceneId: string }) {
             <Share2 />
             Share
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => library.duplicateScene(sceneId)}>
+          <DropdownMenuItem onSelect={() => void duplicate()}>
             <Copy />
             Duplicate
           </DropdownMenuItem>
@@ -803,7 +897,7 @@ function SceneActions({ sceneId }: { sceneId: string }) {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={() => library.deleteScene(sceneId)}>
+          <AlertDialogAction onClick={() => void remove()}>
             Delete scene
           </AlertDialogAction>
         </AlertDialogFooter>

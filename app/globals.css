@@ -230,10 +230,43 @@
     animation: gentle-bob 5s ease-in-out infinite;
   }
 
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .animate-toast-in {
+    animation: toast-in 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Cards settle into the grid on first paint, giving the list a lively,
+     fast-feeling reveal instead of popping in all at once. */
+  @keyframes card-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-card-in {
+    opacity: 0;
+    animation: card-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .animate-draw,
     .animate-float-up,
-    .animate-bob {
+    .animate-bob,
+    .animate-toast-in,
+    .animate-card-in {
       animation: none;
       opacity: 1;
       stroke-dashoffset: 0;

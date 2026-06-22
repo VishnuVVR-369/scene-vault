@@ -315,8 +315,14 @@ function ActiveRoomIndicator({
     const margin = 8;
 
     return {
-      left: Math.min(Math.max(margin, left), window.innerWidth - width - margin),
-      top: Math.min(Math.max(margin, top), window.innerHeight - height - margin),
+      left: Math.min(
+        Math.max(margin, left),
+        window.innerWidth - width - margin,
+      ),
+      top: Math.min(
+        Math.max(margin, top),
+        window.innerHeight - height - margin,
+      ),
     };
   }, []);
 
