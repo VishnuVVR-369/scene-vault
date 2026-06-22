@@ -49,6 +49,7 @@ export type RoomStatus =
   | "connecting"
   | "hydrating"
   | "ready"
+  | "ended"
   | "revoked"
   | "error";
 
@@ -86,6 +87,8 @@ export type UseRoomResult = {
   status: RoomStatus;
   participants: Participant[];
   isSnapshotter: boolean;
+  canStop: boolean;
+  stopRoom: () => Promise<void>;
   onApi: (api: ExcalidrawImperativeAPI) => void;
   onSceneChange: (
     elements: readonly SceneElementLike[],
@@ -99,13 +102,14 @@ export type UseRoomResult = {
 };
 
 export function useRoom(args: UseRoomArgs): UseRoomResult {
-  const { enabled, sceneId, token, identity, onSnapshot, onLoadFiles } = args;
+  const { enabled, sceneId, token, identity, canSnapshot, onSnapshot, onLoadFiles } = args;
 
   const joinRoom = useMutation(api.collab.joinRoom);
   const completeHydration = useMutation(api.collab.completeHydration);
   const pushElements = useMutation(api.collab.pushElements);
   const updatePresence = useMutation(api.collab.updatePresence);
   const leaveRoom = useMutation(api.collab.leaveRoom);
+  const stopRoomMutation = useMutation(api.collab.stopRoom);
   const markRoomSnapshot = useMutation(api.collab.markRoomSnapshot);
 
   const queryArgs = useMemo(
@@ -136,6 +140,8 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
   const pendingRef = useRef<Map<string, SceneElementLike>>(new Map());
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushingRef = useRef(false);
+  const flushAgainRef = useRef(false);
+  const flushPromiseRef = useRef<Promise<void> | null>(null);
 
   const selectionRef = useRef<string[]>([]);
   const cursorRef = useRef<{ x: number; y: number; button: "up" | "down" } | null>(null);
@@ -261,6 +267,11 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
         return "revoked";
       }
     }
+    if (roomView?.authorized && roomView.active === false) {
+      if (status === "ready" || status === "hydrating") {
+        return "ended";
+      }
+    }
     return status;
   }, [enabled, roomView, roomElements, status]);
 
@@ -354,14 +365,14 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
 
   // ---- Snapshotter election (only signed-in sessions may write R2) ----------
   const amSnapshotter = useMemo(() => {
-    if (!presence || !roomSessionId || !args.canSnapshot) {
+    if (!presence || !roomSessionId || !canSnapshot) {
       return false;
     }
     const active = presence
       .filter((p) => isPresenceActive(p.lastSeenAt, nowTick) && p.userId != null)
       .map((p) => p.roomSessionId);
     return isSnapshotter(roomSessionId, active);
-  }, [presence, nowTick, roomSessionId, args.canSnapshot]);
+  }, [presence, nowTick, roomSessionId, canSnapshot]);
 
   useEffect(() => {
     isSnapshotterRef.current = amSnapshotter;
@@ -375,7 +386,7 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
     const tick = setInterval(() => setNowTick(Date.now()), 3000);
     const heartbeat = setInterval(() => {
       const base = baseMutationArgs();
-      if (!base || status !== "ready") {
+      if (!base || effectiveStatus !== "ready") {
         return;
       }
       void updatePresence({
@@ -392,43 +403,75 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
       clearInterval(tick);
       clearInterval(heartbeat);
     };
-  }, [enabled, status, baseMutationArgs, updatePresence]);
+  }, [enabled, effectiveStatus, baseMutationArgs, updatePresence]);
 
   // ---- Outbound element flush ---------------------------------------------
   const flush = useCallback(async () => {
     if (flushingRef.current) {
+      flushAgainRef.current = true;
+      await flushPromiseRef.current;
       return;
     }
-    const base = baseMutationArgs();
-    if (!base || pendingRef.current.size === 0) {
-      return;
-    }
-    flushingRef.current = true;
-    const all = [...pendingRef.current.values()];
-    pendingRef.current.clear();
-    try {
-      for (let i = 0; i < all.length; i += MAX_BATCH_ELEMENTS) {
-        const chunk = all.slice(i, i + MAX_BATCH_ELEMENTS);
-        await pushElements({ ...base, elements: chunk as unknown[] });
-        for (const el of chunk) {
-          knownVersionsRef.current.set(el.id, {
-            version: el.version,
-            versionNonce: el.versionNonce ?? 0,
-          });
+
+    const run = async () => {
+      flushingRef.current = true;
+      try {
+        do {
+          flushAgainRef.current = false;
+          const base = baseMutationArgs();
+          if (!base || pendingRef.current.size === 0) {
+            return;
+          }
+
+          const all = [...pendingRef.current.values()];
+          pendingRef.current.clear();
+          try {
+            for (let i = 0; i < all.length; i += MAX_BATCH_ELEMENTS) {
+              const chunk = all.slice(i, i + MAX_BATCH_ELEMENTS);
+              await pushElements({ ...base, elements: chunk as unknown[] });
+              for (const el of chunk) {
+                knownVersionsRef.current.set(el.id, {
+                  version: el.version,
+                  versionNonce: el.versionNonce ?? 0,
+                });
+              }
+            }
+          } catch {
+            // Re-queue (unless a newer version was queued meanwhile) and back off.
+            for (const el of all) {
+              const queued = pendingRef.current.get(el.id);
+              if (!queued || (queued.version ?? 0) <= (el.version ?? 0)) {
+                pendingRef.current.set(el.id, el);
+              }
+            }
+            flushAgainRef.current = true;
+            if (!flushTimerRef.current) {
+              flushTimerRef.current = setTimeout(() => {
+                flushTimerRef.current = null;
+                void flushRef.current();
+              }, ELEMENT_FLUSH_MS * 4);
+            }
+            return;
+          }
+        } while (flushAgainRef.current || pendingRef.current.size > 0);
+      } finally {
+        flushingRef.current = false;
+        flushPromiseRef.current = null;
+        if (flushAgainRef.current || pendingRef.current.size > 0) {
+          flushAgainRef.current = false;
+          if (!flushTimerRef.current) {
+            flushTimerRef.current = setTimeout(() => {
+              flushTimerRef.current = null;
+              void flushRef.current();
+            }, ELEMENT_FLUSH_MS);
+          }
         }
       }
-    } catch {
-      // Re-queue (unless a newer version was queued meanwhile) and back off.
-      for (const el of all) {
-        const queued = pendingRef.current.get(el.id);
-        if (!queued || (queued.version ?? 0) <= (el.version ?? 0)) {
-          pendingRef.current.set(el.id, el);
-        }
-      }
-      flushTimerRef.current = setTimeout(() => flushRef.current(), ELEMENT_FLUSH_MS * 4);
-    } finally {
-      flushingRef.current = false;
-    }
+    };
+
+    const promise = Promise.resolve().then(run);
+    flushPromiseRef.current = promise;
+    await promise;
   }, [baseMutationArgs, pushElements]);
 
   useEffect(() => {
@@ -446,9 +489,9 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
   }, [flush]);
 
   // ---- Snapshot to R2 (snapshotter only) ----------------------------------
-  const doSnapshot = useCallback(async () => {
+  const doSnapshot = useCallback(async (options?: { force?: boolean }) => {
     const editor = apiRef.current;
-    if (!editor || !isSnapshotterRef.current) {
+    if (!editor || !canSnapshot || (!options?.force && !isSnapshotterRef.current)) {
       return;
     }
     const base = baseMutationArgs();
@@ -481,7 +524,7 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
     } catch {
       // Stays dirty -> retried on the next change / by the next snapshotter.
     }
-  }, [baseMutationArgs, onSnapshot, markRoomSnapshot, roomElements]);
+  }, [baseMutationArgs, canSnapshot, onSnapshot, markRoomSnapshot, roomElements]);
 
   const scheduleSnapshot = useCallback(() => {
     if (snapshotTimerRef.current) {
@@ -500,7 +543,7 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
 
   const onSceneChange = useCallback<UseRoomResult["onSceneChange"]>(
     (_elements, appState, _files) => {
-      if (status !== "ready" || !sessionRef.current) {
+      if (effectiveStatus !== "ready" || !sessionRef.current) {
         return;
       }
       const editor = apiRef.current;
@@ -518,13 +561,13 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
         scheduleSnapshot();
       }
     },
-    [status, scheduleFlush, scheduleSnapshot],
+    [effectiveStatus, scheduleFlush, scheduleSnapshot],
   );
 
   const sendCursor = useCallback(() => {
     const base = baseMutationArgs();
     const cursor = cursorRef.current;
-    if (!base || !cursor || status !== "ready") {
+    if (!base || !cursor || effectiveStatus !== "ready") {
       return;
     }
     void updatePresence({
@@ -536,7 +579,20 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
       button: cursor.button,
       selectedIds: selectionRef.current,
     }).catch(() => {});
-  }, [baseMutationArgs, status, updatePresence]);
+  }, [baseMutationArgs, effectiveStatus, updatePresence]);
+
+  const stopRoom = useCallback(async () => {
+    await flush();
+    await doSnapshot({ force: true });
+    const base = baseMutationArgs();
+    if (!base) {
+      throw new Error("Room session is not ready");
+    }
+    await stopRoomMutation(base);
+    sessionRef.current = null;
+    setRoomSessionId(null);
+    setStatus("ended");
+  }, [baseMutationArgs, doSnapshot, flush, stopRoomMutation]);
 
   const onPointerUpdate = useCallback<UseRoomResult["onPointerUpdate"]>(
     (payload) => {
@@ -583,6 +639,8 @@ export function useRoom(args: UseRoomArgs): UseRoomResult {
     status: effectiveStatus,
     participants,
     isSnapshotter: amSnapshotter,
+    canStop: Boolean(roomView?.authorized && roomView.canStop),
+    stopRoom,
     onApi,
     onSceneChange,
     onPointerUpdate,

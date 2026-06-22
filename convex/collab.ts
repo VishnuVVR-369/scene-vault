@@ -8,6 +8,7 @@ import {
   MAX_ELEMENTS_PER_SCENE,
   MAX_SESSIONS_PER_ROOM,
   RATE_LIMITS,
+  roomIsDirty,
   roomIsCollectable,
   sanitizeColor,
   sanitizeName,
@@ -56,6 +57,7 @@ type AuthorizedScene = {
   scene: Doc<"scenes">;
   ownerId: string;
   viaOwner: boolean;
+  userId: string | null;
 };
 
 /**
@@ -76,7 +78,7 @@ async function authorizeEdit(
   }
   const userId = await getUserId(ctx);
   if (userId && scene.ownerId === userId) {
-    return { scene, ownerId: scene.ownerId, viaOwner: true };
+    return { scene, ownerId: scene.ownerId, viaOwner: true, userId };
   }
   if (args.token) {
     const parsed = shareTokenSchema.safeParse(args.token);
@@ -94,7 +96,7 @@ async function authorizeEdit(
       share.sceneId === args.sceneId &&
       share.ownerId === scene.ownerId
     ) {
-      return { scene, ownerId: scene.ownerId, viaOwner: false };
+      return { scene, ownerId: scene.ownerId, viaOwner: false, userId };
     }
   }
   return null;
@@ -124,6 +126,10 @@ async function getRoom(ctx: { db: DatabaseReader }, sceneId: Id<"scenes">) {
     .unique();
 }
 
+function roomIsActive(room: Doc<"liveRooms"> | null | undefined) {
+  return Boolean(room && room.startedByUserId && !room.stoppedAt);
+}
+
 async function getMaxElementUpdatedAt(
   ctx: { db: DatabaseReader },
   sceneId: Id<"scenes">,
@@ -132,11 +138,46 @@ async function getMaxElementUpdatedAt(
     .query("roomElements")
     .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
     .collect();
-  let maxElementUpdatedAt = 0;
+  let maxElementUpdatedAt: number | null = null;
   for (const element of elements) {
-    maxElementUpdatedAt = Math.max(maxElementUpdatedAt, element.updatedAt);
+    maxElementUpdatedAt = Math.max(maxElementUpdatedAt ?? 0, element.updatedAt);
   }
   return { elements, maxElementUpdatedAt };
+}
+
+async function deleteLiveRoomRows(db: DatabaseWriter, sceneId: Id<"scenes">) {
+  const elements = await db
+    .query("roomElements")
+    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
+    .collect();
+  for (const element of elements) {
+    await db.delete(element._id);
+  }
+  const presenceRows = await db
+    .query("presence")
+    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
+    .collect();
+  for (const presence of presenceRows) {
+    await db.delete(presence._id);
+  }
+  const sessions = await db
+    .query("roomSessions")
+    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
+    .collect();
+  for (const session of sessions) {
+    await db.delete(session._id);
+  }
+  const rateLimits = await db
+    .query("collabRateLimits")
+    .withIndex("by_key", (q) => q.eq("sceneId", sceneId))
+    .collect();
+  for (const limit of rateLimits) {
+    await db.delete(limit._id);
+  }
+  const room = await getRoom({ db }, sceneId);
+  if (room) {
+    await db.delete(room._id);
+  }
 }
 
 /** Token-bucket rate limit gate for a (session, action). Throws when exceeded. */
@@ -179,6 +220,57 @@ async function enforceRateLimit(
 // Join / hydration
 // ---------------------------------------------------------------------------
 
+export const startRoom = mutation({
+  args: {
+    sceneId: v.id("scenes"),
+    token: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const auth = await authorizeEdit(ctx, args);
+    if (!auth || !auth.viaOwner || !auth.userId) {
+      throw new Error("Only the scene owner can start a room");
+    }
+    const now = Date.now();
+    const existing = await getRoom(ctx, args.sceneId);
+    if (roomIsActive(existing)) {
+      return {
+        active: true,
+        startedByUserId: existing!.startedByUserId ?? null,
+        status: existing!.status,
+      };
+    }
+    if (existing && !existing.startedByUserId && !existing.stoppedAt) {
+      await ctx.db.patch(existing._id, {
+        ownerId: auth.ownerId,
+        startedByUserId: auth.userId,
+        startedAt: now,
+        stoppedAt: null,
+      });
+      return { active: true, startedByUserId: auth.userId, status: existing.status };
+    }
+    if (existing) {
+      await deleteLiveRoomRows(ctx.db, args.sceneId);
+    }
+    const status = auth.scene.currentObjectKey ? "needsHydration" : "ready";
+    await ctx.db.insert("liveRooms", {
+      sceneId: args.sceneId,
+      ownerId: auth.ownerId,
+      status,
+      hydratingSessionId: null,
+      hydratingStartedAt: null,
+      startedByUserId: auth.userId,
+      startedAt: now,
+      stoppedAt: null,
+      epoch: 0,
+      snapshotMaxUpdatedAt: null,
+      snapshotHash: auth.scene.currentObjectKey ? auth.scene.contentHash : null,
+      snapshotAt: null,
+      createdAt: now,
+    });
+    return { active: true, startedByUserId: auth.userId, status };
+  },
+});
+
 export const joinRoom = mutation({
   args: {
     sceneId: v.id("scenes"),
@@ -202,23 +294,11 @@ export const joinRoom = mutation({
       now,
     );
 
-    let room = await getRoom(ctx, args.sceneId);
-    if (!room) {
-      const status = auth.scene.currentObjectKey ? "needsHydration" : "ready";
-      const roomId = await ctx.db.insert("liveRooms", {
-        sceneId: args.sceneId,
-        ownerId: auth.ownerId,
-        status,
-        hydratingSessionId: null,
-        hydratingStartedAt: null,
-        epoch: 0,
-        snapshotMaxUpdatedAt: null,
-        snapshotHash: auth.scene.currentObjectKey ? auth.scene.contentHash : null,
-        snapshotAt: null,
-        createdAt: now,
-      });
-      room = (await ctx.db.get(roomId))!;
+    const room = await getRoom(ctx, args.sceneId);
+    if (!roomIsActive(room)) {
+      throw new Error("Room has not been started");
     }
+    const activeRoom = room!;
 
     const sessionCount = (
       await ctx.db
@@ -256,10 +336,11 @@ export const joinRoom = mutation({
     // snapshot, or if a previous claimer stalled.
     let needsHydration = false;
     if (
-      room.status === "needsHydration" ||
-      (room.status === "hydrating" && isHydrationClaimStale(room.hydratingStartedAt, now))
+      activeRoom.status === "needsHydration" ||
+      (activeRoom.status === "hydrating" &&
+        isHydrationClaimStale(activeRoom.hydratingStartedAt, now))
     ) {
-      await ctx.db.patch(room._id, {
+      await ctx.db.patch(activeRoom._id, {
         status: "hydrating",
         hydratingSessionId: roomSessionId,
         hydratingStartedAt: now,
@@ -270,7 +351,7 @@ export const joinRoom = mutation({
     return {
       roomSessionId,
       sessionSecret,
-      epoch: room.epoch,
+      epoch: activeRoom.epoch,
       needsHydration,
       ownerId: auth.ownerId,
       viaOwner: auth.viaOwner,
@@ -298,7 +379,12 @@ export const completeHydration = mutation({
       return { seeded: false };
     }
     const room = await getRoom(ctx, args.sceneId);
-    if (!room || room.status !== "hydrating" || room.hydratingSessionId !== args.roomSessionId) {
+    if (
+      !room ||
+      !roomIsActive(room) ||
+      room.status !== "hydrating" ||
+      room.hydratingSessionId !== args.roomSessionId
+    ) {
       return { seeded: false };
     }
     const batch = validateElementBatch(args.elements, MAX_ELEMENTS_PER_SCENE);
@@ -353,13 +439,18 @@ export const getRoomView = query({
       return { authorized: false as const };
     }
     const room = await getRoom(ctx, args.sceneId);
+    const active = roomIsActive(room);
     return {
       authorized: true as const,
-      status: room?.status ?? "ready",
+      active,
+      status: active ? room!.status : ("inactive" as const),
       epoch: room?.epoch ?? 0,
       ownerId: auth.ownerId,
       viaOwner: auth.viaOwner,
       title: auth.scene.title,
+      startedByUserId: active ? (room!.startedByUserId ?? null) : null,
+      canStart: auth.viaOwner && !active,
+      canStop: active && auth.userId !== null && room!.startedByUserId === auth.userId,
     };
   },
 });
@@ -370,6 +461,10 @@ export const getRoomElements = query({
     const auth = await authorizeEdit(ctx, args);
     if (!auth) {
       return null;
+    }
+    const room = await getRoom(ctx, args.sceneId);
+    if (!roomIsActive(room)) {
+      return [];
     }
     const rows = await ctx.db
       .query("roomElements")
@@ -391,6 +486,10 @@ export const getPresence = query({
     const auth = await authorizeEdit(ctx, args);
     if (!auth) {
       return null;
+    }
+    const room = await getRoom(ctx, args.sceneId);
+    if (!roomIsActive(room)) {
+      return [];
     }
     const rows = await ctx.db
       .query("presence")
@@ -430,6 +529,10 @@ export const pushElements = mutation({
     const auth = await authorizeEdit(ctx, args);
     if (!auth) {
       throw new Error("Not authorized");
+    }
+    const room = await getRoom(ctx, args.sceneId);
+    if (!roomIsActive(room)) {
+      throw new Error("Room is not active");
     }
     const now = Date.now();
     await enforceRateLimit(ctx, { ...args, action: "pushElements" }, now);
@@ -502,6 +605,10 @@ export const updatePresence = mutation({
     if (!auth) {
       throw new Error("Not authorized");
     }
+    const room = await getRoom(ctx, args.sceneId);
+    if (!roomIsActive(room)) {
+      throw new Error("Room is not active");
+    }
     const now = Date.now();
     await enforceRateLimit(ctx, { ...args, action: "updatePresence" }, now);
     const fields = {
@@ -549,6 +656,42 @@ export const leaveRoom = mutation({
   },
 });
 
+export const stopRoom = mutation({
+  args: {
+    sceneId: v.id("scenes"),
+    token: v.optional(v.union(v.string(), v.null())),
+    roomSessionId: v.string(),
+    sessionSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const session = await verifySession(ctx, args);
+    if (!session) {
+      throw new Error("Invalid session");
+    }
+    const userId = await getUserId(ctx);
+    if (!userId || session.userId !== userId) {
+      throw new Error("Only the room starter can stop this room");
+    }
+    const auth = await authorizeEdit(ctx, args);
+    if (!auth) {
+      throw new Error("Not authorized");
+    }
+    const room = await getRoom(ctx, args.sceneId);
+    if (!roomIsActive(room)) {
+      return null;
+    }
+    if (room!.startedByUserId !== userId) {
+      throw new Error("Only the room starter can stop this room");
+    }
+    const { maxElementUpdatedAt } = await getMaxElementUpdatedAt(ctx, args.sceneId);
+    if (roomIsDirty(maxElementUpdatedAt, room!.snapshotMaxUpdatedAt)) {
+      throw new Error("Room has unsaved changes");
+    }
+    await deleteLiveRoomRows(ctx.db, args.sceneId);
+    return null;
+  },
+});
+
 export const markRoomSnapshot = mutation({
   args: {
     sceneId: v.id("scenes"),
@@ -556,7 +699,7 @@ export const markRoomSnapshot = mutation({
     roomSessionId: v.string(),
     sessionSecret: v.string(),
     snapshotHash: v.string(),
-    snapshotMaxUpdatedAt: v.number(),
+    snapshotMaxUpdatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const session = await verifySession(ctx, args);
@@ -574,26 +717,33 @@ export const markRoomSnapshot = mutation({
     if (auth.scene.contentHash !== args.snapshotHash) {
       throw new Error("Snapshot has not been committed");
     }
-    if (!Number.isFinite(args.snapshotMaxUpdatedAt) || args.snapshotMaxUpdatedAt < 0) {
+    if (
+      args.snapshotMaxUpdatedAt !== undefined &&
+      (!Number.isFinite(args.snapshotMaxUpdatedAt) || args.snapshotMaxUpdatedAt < 0)
+    ) {
       throw new Error("Invalid snapshot watermark");
     }
     const room = await getRoom(ctx, args.sceneId);
-    if (!room) {
+    if (!roomIsActive(room)) {
       return null;
     }
     const { maxElementUpdatedAt } = await getMaxElementUpdatedAt(ctx, args.sceneId);
-    if (args.snapshotMaxUpdatedAt > maxElementUpdatedAt) {
+    const serverWatermark = maxElementUpdatedAt ?? 0;
+    if (
+      args.snapshotMaxUpdatedAt !== undefined &&
+      args.snapshotMaxUpdatedAt > serverWatermark
+    ) {
       throw new Error("Snapshot watermark is ahead of the live room");
     }
     if (
-      room.snapshotMaxUpdatedAt !== null &&
-      args.snapshotMaxUpdatedAt < room.snapshotMaxUpdatedAt
+      room!.snapshotMaxUpdatedAt !== null &&
+      serverWatermark < room!.snapshotMaxUpdatedAt
     ) {
       return null;
     }
-    await ctx.db.patch(room._id, {
+    await ctx.db.patch(room!._id, {
       snapshotHash: args.snapshotHash,
-      snapshotMaxUpdatedAt: args.snapshotMaxUpdatedAt,
+      snapshotMaxUpdatedAt: serverWatermark,
       snapshotAt: Date.now(),
     });
     return null;

@@ -23,6 +23,7 @@ const Excalidraw = dynamic(
 
 type ExcalidrawCanvasProps = {
   initialBundle: SceneBundle;
+  onBundleDraftChange?: (bundle: SceneBundle) => void;
   onBundleChange?: (bundle: SceneBundle) => void;
   theme?: "light" | "dark";
   mode?: "view" | "edit";
@@ -42,6 +43,7 @@ type ExcalidrawCanvasProps = {
 
 export function ExcalidrawCanvas({
   initialBundle,
+  onBundleDraftChange,
   onBundleChange,
   theme,
   mode = "edit",
@@ -144,6 +146,7 @@ export function ExcalidrawCanvas({
             });
             bundleRef.current = next;
             lastSignatureRef.current = sceneContentSignature(next);
+            onBundleDraftChange?.(next);
             onBundleChange?.(next);
           }}
         >
@@ -167,7 +170,7 @@ export function ExcalidrawCanvas({
           }
           // Live collaboration: forward every change immediately.
           onSceneChange?.(elements, appState, files);
-          if (!onBundleChange) {
+          if (!onBundleChange && !onBundleDraftChange) {
             return;
           }
           const next = normalizeSceneBundle({
@@ -189,6 +192,10 @@ export function ExcalidrawCanvas({
           }
           lastSignatureRef.current = signature;
           bundleRef.current = next;
+          onBundleDraftChange?.(next);
+          if (!onBundleChange) {
+            return;
+          }
           if (emitTimer.current) {
             clearTimeout(emitTimer.current);
           }

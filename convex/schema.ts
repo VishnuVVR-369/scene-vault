@@ -41,8 +41,8 @@ export default defineSchema({
     .index("by_scene_mode", ["sceneId", "mode"])
     .index("by_owner", ["ownerId"]),
 
-  // One live collaboration room per scene. Created lazily the first time anyone
-  // opens the scene for live editing. `epoch` is bumped to force every member to
+  // One active live collaboration room per scene. Created only when the owner
+  // explicitly starts live editing. `epoch` is bumped to force every member to
   // resync or to revoke access. Snapshot bookkeeping (`snapshot*`) lets a cron
   // safely garbage-collect the live working set only once it has been persisted
   // back to R2 — so a browser crash can never lose edits (they live in Convex).
@@ -61,6 +61,9 @@ export default defineSchema({
     ),
     hydratingSessionId: v.union(v.string(), v.null()),
     hydratingStartedAt: v.union(v.number(), v.null()),
+    startedByUserId: v.optional(v.union(v.string(), v.null())),
+    startedAt: v.optional(v.number()),
+    stoppedAt: v.optional(v.union(v.number(), v.null())),
     epoch: v.number(),
     // Max `updatedAt` across roomElements captured by the last successful R2
     // snapshot, plus the content hash that was written. The room is "dirty"

@@ -32,6 +32,21 @@ export const seed = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+    await ctx.db.insert("liveRooms", {
+      sceneId,
+      ownerId: "smoke-owner",
+      status: "ready",
+      hydratingSessionId: null,
+      hydratingStartedAt: null,
+      startedByUserId: "smoke-owner",
+      startedAt: now,
+      stoppedAt: null,
+      epoch: 0,
+      snapshotMaxUpdatedAt: null,
+      snapshotHash: null,
+      snapshotAt: null,
+      createdAt: now,
+    });
     return sceneId;
   },
 });

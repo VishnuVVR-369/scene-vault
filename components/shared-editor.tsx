@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { LogoMark } from "@/components/brand";
 import { CollaborativeCanvas } from "@/components/collab/collaborative-canvas";
+import { RoomControls } from "@/components/collab/room-controls";
 import { ExcalidrawCanvas } from "@/components/excalidraw-canvas";
 import type { SnapshotBundle } from "@/components/collab/use-room";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -62,10 +63,12 @@ export function SharedEditor({
   const [bundle, setBundle] = useState<SceneBundle | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [joinedRoom, setJoinedRoom] = useState(false);
   const lastSavedHashRef = useRef<string | null>(null);
   const shareBase = useMemo(() => `/api/share/${encodeURIComponent(token)}`, [token]);
   const canEdit = mode === "edit";
   const canSingleUserEdit = canEdit && isLoaded && Boolean(isSignedIn);
+  const canUseLive = canEdit && bundle !== null && bundle.elements.length <= MAX_ELEMENTS_PER_SCENE;
 
   useEffect(() => {
     let cancelled = false;
@@ -276,6 +279,15 @@ export function SharedEditor({
           </p>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
+          {canUseLive ? (
+            <RoomControls
+              sceneId={metadata.sceneId}
+              token={token}
+              allowStart={false}
+              joined={joinedRoom}
+              onJoin={() => setJoinedRoom(true)}
+            />
+          ) : null}
           <Button
             variant="outline"
             size="sm"
@@ -289,7 +301,7 @@ export function SharedEditor({
         </div>
       </header>
       <section className="min-h-0 flex-1">
-        {canEdit && bundle.elements.length <= MAX_ELEMENTS_PER_SCENE ? (
+        {canUseLive && joinedRoom ? (
           <CollaborativeCanvas
             sceneId={metadata.sceneId}
             token={token}
@@ -298,11 +310,14 @@ export function SharedEditor({
             theme={resolvedTheme}
             onSnapshot={onSnapshot}
             onLoadFiles={onLoadFiles}
+            onBundleDraftChange={setBundle}
+            onStopped={() => setJoinedRoom(false)}
           />
         ) : (
           <ExcalidrawCanvas
             initialBundle={bundle}
             mode={canSingleUserEdit ? "edit" : "view"}
+            onBundleDraftChange={canSingleUserEdit ? setBundle : undefined}
             onBundleChange={canSingleUserEdit ? saveSingleUserEdit : undefined}
             theme={resolvedTheme}
           />

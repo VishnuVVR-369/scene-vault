@@ -9,6 +9,7 @@ import { normalizeSceneBundle } from "@/lib/excalidraw-scene";
 
 import { LogoMark } from "@/components/brand";
 import { CollaborativeCanvas } from "@/components/collab/collaborative-canvas";
+import { RoomControls } from "@/components/collab/room-controls";
 import { ExcalidrawCanvas } from "@/components/excalidraw-canvas";
 import {
   LibraryProvider,
@@ -82,6 +83,11 @@ function EditorContent({ sceneId }: { sceneId: string }) {
     [library.scenes, sceneId],
   );
   const [bundle, setBundle] = useState<SceneBundle | null>(null);
+  const [joinedRoom, setJoinedRoom] = useState(false);
+  const [savedContentHash, setSavedContentHash] = useState<{
+    sceneId: string;
+    hash: string | null;
+  } | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveState>("idle");
   const [shareOpen, setShareOpen] = useState(false);
 
@@ -101,8 +107,11 @@ function EditorContent({ sceneId }: { sceneId: string }) {
   }, [library, sceneId]);
 
   const remote = shouldUseRemoteData;
-  const liveCollab =
-    remote && (!bundle || bundle.elements.length <= MAX_ELEMENTS_PER_SCENE);
+  const canUseLive =
+    remote && bundle !== null && bundle.elements.length <= MAX_ELEMENTS_PER_SCENE;
+
+  const contentHash =
+    savedContentHash?.sceneId === sceneId ? savedContentHash.hash : (scene?.contentHash ?? null);
 
   // `library` is a new object on every Convex update, so keep collab callbacks
   // stable via a ref to avoid re-running the room's effects each render.
@@ -116,6 +125,8 @@ function EditorContent({ sceneId }: { sceneId: string }) {
       const sceneBundle = normalizeSceneBundle(toSceneBundle(snapshot));
       const hash = await sha256Hex(JSON.stringify(sceneBundle));
       await libraryRef.current.saveSceneBundle(sceneId, sceneBundle);
+      setBundle(sceneBundle);
+      setSavedContentHash({ sceneId, hash });
       return hash;
     },
     [sceneId],
@@ -162,9 +173,15 @@ function EditorContent({ sceneId }: { sceneId: string }) {
   }
 
   async function save(nextBundle: SceneBundle) {
+    const sceneBundle = normalizeSceneBundle(nextBundle);
+    setBundle(sceneBundle);
     setSaveStatus("saving");
     try {
-      await library.saveSceneBundle(sceneId, nextBundle);
+      await library.saveSceneBundle(sceneId, sceneBundle);
+      setSavedContentHash({
+        sceneId,
+        hash: await sha256Hex(JSON.stringify(sceneBundle)),
+      });
       setSaveStatus("saved");
     } catch {
       setSaveStatus("error");
@@ -195,7 +212,20 @@ function EditorContent({ sceneId }: { sceneId: string }) {
           <Pencil className="pointer-events-none absolute right-1.5 size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-0" />
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          {liveCollab ? null : <SaveStatus state={saveStatus} />}
+          {joinedRoom ? null : <SaveStatus state={saveStatus} />}
+          {canUseLive ? (
+            <RoomControls
+              sceneId={sceneId}
+              allowStart
+              joined={joinedRoom}
+              onBeforeStart={async () => {
+                if (bundle) {
+                  await save(bundle);
+                }
+              }}
+              onJoin={() => setJoinedRoom(true)}
+            />
+          ) : null}
           <ThemeToggle />
           <Button
             size="icon"
@@ -243,18 +273,21 @@ function EditorContent({ sceneId }: { sceneId: string }) {
       </header>
       <section className="min-h-0 flex-1">
         {bundle ? (
-          liveCollab ? (
+          canUseLive && joinedRoom ? (
             <CollaborativeCanvas
               sceneId={sceneId}
               initialBundle={bundle}
-              contentHash={scene.contentHash}
+              contentHash={contentHash}
               theme={resolvedTheme}
               onSnapshot={onSnapshot}
               onLoadFiles={onLoadFiles}
+              onBundleDraftChange={setBundle}
+              onStopped={() => setJoinedRoom(false)}
             />
           ) : (
             <ExcalidrawCanvas
               initialBundle={bundle}
+              onBundleDraftChange={setBundle}
               onBundleChange={save}
               theme={resolvedTheme}
             />

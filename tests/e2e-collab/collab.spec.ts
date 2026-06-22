@@ -33,7 +33,16 @@ test("two guests edit the same room live", async ({ browser }) => {
   await a.goto(url);
   await b.goto(url);
 
-  // Both guests reach the live collaborative canvas.
+  await expect(a.getByRole("button", { name: "Join room" })).toBeVisible({
+    timeout: 45_000,
+  });
+  await expect(b.getByRole("button", { name: "Join room" })).toBeVisible({
+    timeout: 45_000,
+  });
+  await a.getByRole("button", { name: "Join room" }).click();
+  await b.getByRole("button", { name: "Join room" }).click();
+
+  // Both guests reach the live collaborative canvas after explicitly joining.
   await a.getByTestId("e2e-add-shape").waitFor({ state: "visible", timeout: 45_000 });
   await b.getByTestId("e2e-add-shape").waitFor({ state: "visible", timeout: 45_000 });
 

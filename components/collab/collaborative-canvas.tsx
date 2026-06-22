@@ -1,8 +1,8 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { Pencil, Wifi, WifiOff } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Loader2, Pencil, Square, Wifi, WifiOff } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ExcalidrawCanvas } from "@/components/excalidraw-canvas";
 import { useRoom, type Participant, type SnapshotBundle } from "@/components/collab/use-room";
@@ -33,6 +33,8 @@ type CollaborativeCanvasProps = {
   theme?: "light" | "dark";
   onSnapshot: (bundle: SnapshotBundle) => Promise<string | null>;
   onLoadFiles?: (fileIds: string[]) => Promise<BinaryFileData[]>;
+  onBundleDraftChange?: (bundle: SceneBundle) => void;
+  onStopped?: () => void;
 };
 
 function initials(name: string): string {
@@ -153,7 +155,10 @@ function GuestIdentityEditor({
 
 export function CollaborativeCanvas(props: CollaborativeCanvasProps) {
   const { user, isSignedIn } = useUser();
+  const onStopped = props.onStopped;
   const [guest, setGuest] = useState<CollabIdentity>(() => loadGuestIdentity());
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
 
   const identity: CollabIdentity = useMemo(() => {
     if (isSignedIn && user) {
@@ -176,6 +181,12 @@ export function CollaborativeCanvas(props: CollaborativeCanvasProps) {
     onSnapshot: props.onSnapshot,
     onLoadFiles: props.onLoadFiles,
   });
+
+  useEffect(() => {
+    if (room.status === "ended") {
+      onStopped?.();
+    }
+  }, [room.status, onStopped]);
 
   if (room.status === "revoked") {
     return (
@@ -204,6 +215,7 @@ export function CollaborativeCanvas(props: CollaborativeCanvasProps) {
         theme={props.theme}
         mode="edit"
         onApi={room.onApi}
+        onBundleDraftChange={props.onBundleDraftChange}
         onSceneChange={(elements, appState, files) =>
           room.onSceneChange(elements as never, appState, files)
         }
@@ -232,6 +244,36 @@ export function CollaborativeCanvas(props: CollaborativeCanvasProps) {
                 saveGuestIdentity(next);
               }}
             />
+          </div>
+        ) : null}
+        {room.canStop ? (
+          <div className="pointer-events-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              className="gap-1.5 shadow-sm"
+              disabled={stopping}
+              onClick={async () => {
+                setStopping(true);
+                setStopError(null);
+                try {
+                  await room.stopRoom();
+                  onStopped?.();
+                } catch (err) {
+                  setStopError(err instanceof Error ? err.message : "Could not stop room");
+                } finally {
+                  setStopping(false);
+                }
+              }}
+            >
+              {stopping ? <Loader2 className="animate-spin" /> : <Square />}
+              Stop room
+            </Button>
+            {stopError ? (
+              <span className="max-w-48 truncate rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive">
+                {stopError}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </div>
