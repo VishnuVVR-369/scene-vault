@@ -27,4 +27,17 @@ export default defineSchema({
   })
     .index("by_owner_folder", ["ownerId", "folderId"])
     .index("by_owner_updated", ["ownerId", "updatedAt"]),
+
+  sceneShares: defineTable({
+    sceneId: v.id("scenes"),
+    ownerId: v.string(),
+    mode: v.union(v.literal("view"), v.literal("edit")),
+    token: v.string(),
+    enabled: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_scene_mode", ["sceneId", "mode"])
+    .index("by_owner", ["ownerId"]),
 });

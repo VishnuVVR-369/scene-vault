@@ -29,7 +29,7 @@ export async function POST(request: Request, ctx: SceneRouteContext) {
   }
 
   const target = await createSceneUploadUrl({
-    ownerId: authResult.userId,
+    ownerId: authResult.access.storageOwnerId,
     sceneId,
     contentType: body.contentType,
   });

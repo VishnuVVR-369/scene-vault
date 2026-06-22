@@ -91,6 +91,19 @@ export const signedStorageTargetSchema = z.object({
   url: z.string().url(),
 });
 
+export const sharedSceneMetadataSchema = z.object({
+  sceneId: z.string().min(1),
+  mode: z.enum(["view", "edit"]),
+  title: z.string().trim().min(1).max(120),
+  version: z.number().int().nonnegative(),
+  hasScene: z.boolean(),
+  hasThumbnail: z.boolean(),
+  byteSize: z.number().int().nonnegative(),
+  contentHash: z.string().min(1).nullable(),
+  updatedAt: z.number().int().nonnegative(),
+  lastSavedAt: z.number().int().nonnegative().nullable(),
+});
+
 export const convexFolderDocSchema = folderSchema.omit({ id: true }).extend({
   _id: z.string().min(1),
   _creationTime: z.number(),
@@ -112,6 +125,7 @@ export type SceneBundle = z.infer<typeof sceneBundleSchema>;
 export type LibraryState = z.infer<typeof libraryStateSchema>;
 export type ConvexFolderDoc = z.infer<typeof convexFolderDocSchema>;
 export type ConvexSceneDoc = z.infer<typeof convexSceneDocSchema>;
+export type SharedSceneMetadata = z.infer<typeof sharedSceneMetadataSchema>;
 
 export function createEmptySceneBundle(): SceneBundle {
   return {

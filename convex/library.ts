@@ -1,15 +1,20 @@
 import { v } from "convex/values";
 
 import {
+  commitSharedSceneSaveArgsSchema,
   commitSceneSaveArgsSchema,
   createFolderArgsSchema,
   createSceneArgsSchema,
   idArgsSchema,
   moveFolderArgsSchema,
   renameFolderArgsSchema,
+  sceneShareArgsSchema,
+  setSceneShareEnabledArgsSchema,
+  shareTokenArgsSchema,
   updateSceneArgsSchema,
 } from "./validation";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type DatabaseReader, type DatabaseWriter } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 
 async function requireOwnerId(ctx: { auth: { getUserIdentity: () => Promise<{ subject: string } | null> } }) {
   const identity = await ctx.auth.getUserIdentity();
@@ -25,6 +30,58 @@ function buildSceneObjectKey(ownerId: string, sceneId: string) {
 
 function buildSceneThumbnailObjectKey(ownerId: string, sceneId: string) {
   return `users/${encodeURIComponent(ownerId)}/scenes/${encodeURIComponent(sceneId)}/head/thumbnail.png`;
+}
+
+function generateShareToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function generateUniqueShareToken(db: DatabaseReader) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const token = generateShareToken();
+    const existing = await db
+      .query("sceneShares")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .unique();
+    if (!existing) {
+      return token;
+    }
+  }
+  throw new Error("Could not generate a unique share token");
+}
+
+async function deleteSharesForScene(db: DatabaseWriter, sceneId: Id<"scenes">) {
+  const shares = await Promise.all([
+    db
+      .query("sceneShares")
+      .withIndex("by_scene_mode", (q) => q.eq("sceneId", sceneId).eq("mode", "view"))
+      .collect(),
+    db
+      .query("sceneShares")
+      .withIndex("by_scene_mode", (q) => q.eq("sceneId", sceneId).eq("mode", "edit"))
+      .collect(),
+  ]);
+  for (const share of shares.flat()) {
+    await db.delete(share._id);
+  }
+}
+
+async function getShareSceneByToken(db: DatabaseReader, token: string) {
+  const input = shareTokenArgsSchema.parse({ token });
+  const share = await db
+    .query("sceneShares")
+    .withIndex("by_token", (q) => q.eq("token", input.token))
+    .unique();
+  if (!share || !share.enabled) {
+    return null;
+  }
+  const scene = await db.get(share.sceneId);
+  if (!scene || scene.ownerId !== share.ownerId) {
+    return null;
+  }
+  return { share, scene };
 }
 
 export const getLibrary = query({
@@ -54,8 +111,150 @@ export const getSceneStorageAccess = query({
       return null;
     }
     return {
+      storageOwnerId: scene.ownerId,
       currentObjectKey: scene.currentObjectKey,
       thumbnailObjectKey: scene.thumbnailObjectKey,
+    };
+  },
+});
+
+export const getSharesForScene = query({
+  args: { sceneId: v.id("scenes") },
+  handler: async (ctx, args) => {
+    const ownerId = await requireOwnerId(ctx);
+    sceneShareArgsSchema.parse({ sceneId: args.sceneId, mode: "view" });
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene || scene.ownerId !== ownerId) {
+      throw new Error("Scene not found");
+    }
+    const [viewShare, editShare] = await Promise.all([
+      ctx.db
+        .query("sceneShares")
+        .withIndex("by_scene_mode", (q) =>
+          q.eq("sceneId", args.sceneId).eq("mode", "view"),
+        )
+        .unique(),
+      ctx.db
+        .query("sceneShares")
+        .withIndex("by_scene_mode", (q) =>
+          q.eq("sceneId", args.sceneId).eq("mode", "edit"),
+        )
+        .unique(),
+    ]);
+    return {
+      view: viewShare
+        ? {
+            token: viewShare.token,
+            enabled: viewShare.enabled,
+            updatedAt: viewShare.updatedAt,
+          }
+        : null,
+      edit: editShare
+        ? {
+            token: editShare.token,
+            enabled: editShare.enabled,
+            updatedAt: editShare.updatedAt,
+          }
+        : null,
+    };
+  },
+});
+
+export const createOrRotateShare = mutation({
+  args: {
+    sceneId: v.id("scenes"),
+    mode: v.union(v.literal("view"), v.literal("edit")),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await requireOwnerId(ctx);
+    const input = sceneShareArgsSchema.parse(args);
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene || scene.ownerId !== ownerId) {
+      throw new Error("Scene not found");
+    }
+    const token = await generateUniqueShareToken(ctx.db);
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("sceneShares")
+      .withIndex("by_scene_mode", (q) =>
+        q.eq("sceneId", args.sceneId).eq("mode", input.mode),
+      )
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        token,
+        enabled: true,
+        updatedAt: now,
+      });
+      return token;
+    }
+    await ctx.db.insert("sceneShares", {
+      sceneId: args.sceneId,
+      ownerId,
+      mode: input.mode,
+      token,
+      enabled: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return token;
+  },
+});
+
+export const setShareEnabled = mutation({
+  args: {
+    sceneId: v.id("scenes"),
+    mode: v.union(v.literal("view"), v.literal("edit")),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const ownerId = await requireOwnerId(ctx);
+    const input = setSceneShareEnabledArgsSchema.parse(args);
+    const scene = await ctx.db.get(args.sceneId);
+    if (!scene || scene.ownerId !== ownerId) {
+      throw new Error("Scene not found");
+    }
+    const existing = await ctx.db
+      .query("sceneShares")
+      .withIndex("by_scene_mode", (q) =>
+        q.eq("sceneId", args.sceneId).eq("mode", input.mode),
+      )
+      .unique();
+    if (!existing) {
+      throw new Error("Share link not found");
+    }
+    await ctx.db.patch(existing._id, {
+      enabled: input.enabled,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const getSharedSceneByToken = query({
+  args: {
+    token: v.string(),
+    requiredMode: v.optional(v.union(v.literal("view"), v.literal("edit"))),
+  },
+  handler: async (ctx, args) => {
+    const result = await getShareSceneByToken(ctx.db, args.token);
+    if (!result) {
+      return null;
+    }
+    if (args.requiredMode && result.share.mode !== args.requiredMode) {
+      return null;
+    }
+    return {
+      sceneId: result.scene._id,
+      storageOwnerId: result.scene.ownerId,
+      mode: result.share.mode,
+      title: result.scene.title,
+      version: result.scene.version,
+      currentObjectKey: result.scene.currentObjectKey,
+      thumbnailObjectKey: result.scene.thumbnailObjectKey,
+      byteSize: result.scene.byteSize,
+      contentHash: result.scene.contentHash,
+      updatedAt: result.scene.updatedAt,
+      lastSavedAt: result.scene.lastSavedAt,
     };
   },
 });
@@ -172,6 +371,7 @@ export const deleteFolder = mutation({
       .collect();
     for (const scene of scenes) {
       if (scene.folderId && folderIds.has(scene.folderId)) {
+        await deleteSharesForScene(ctx.db, scene._id);
         await ctx.db.delete(scene._id);
       }
     }
@@ -248,6 +448,7 @@ export const deleteScene = mutation({
     if (!scene || scene.ownerId !== ownerId) {
       throw new Error("Scene not found");
     }
+    await deleteSharesForScene(ctx.db, args.sceneId);
     await ctx.db.delete(args.sceneId);
   },
 });
@@ -318,6 +519,51 @@ export const commitSceneSave = mutation({
       lastSavedAt: now,
       // Only touch the thumbnail pointer when the client managed to render and
       // upload one; a failed thumbnail must not wipe an existing preview.
+      ...(input.thumbnailObjectKey === undefined
+        ? {}
+        : { thumbnailObjectKey: input.thumbnailObjectKey }),
+    });
+  },
+});
+
+export const commitSharedSceneSave = mutation({
+  args: {
+    token: v.string(),
+    objectKey: v.string(),
+    byteSize: v.number(),
+    contentHash: v.string(),
+    thumbnailObjectKey: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    await requireOwnerId(ctx);
+    const input = commitSharedSceneSaveArgsSchema.parse(args);
+    const result = await getShareSceneByToken(ctx.db, input.token);
+    if (!result || result.share.mode !== "edit") {
+      throw new Error("Share link not found");
+    }
+    const sceneId = result.scene._id;
+    const storageOwnerId = result.scene.ownerId;
+    if (input.objectKey !== buildSceneObjectKey(storageOwnerId, sceneId)) {
+      throw new Error("Invalid scene object key");
+    }
+    if (
+      input.thumbnailObjectKey &&
+      input.thumbnailObjectKey !==
+        buildSceneThumbnailObjectKey(storageOwnerId, sceneId)
+    ) {
+      throw new Error("Invalid scene thumbnail object key");
+    }
+    if (result.scene.contentHash === input.contentHash) {
+      return;
+    }
+    const now = Date.now();
+    await ctx.db.patch(sceneId, {
+      currentObjectKey: input.objectKey,
+      byteSize: input.byteSize,
+      contentHash: input.contentHash,
+      version: result.scene.version + 1,
+      updatedAt: now,
+      lastSavedAt: now,
       ...(input.thumbnailObjectKey === undefined
         ? {}
         : { thumbnailObjectKey: input.thumbnailObjectKey }),

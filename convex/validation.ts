@@ -39,3 +39,33 @@ export const commitSceneSaveArgsSchema = z.object({
   contentHash: z.string().min(1),
   thumbnailObjectKey: z.union([z.string().min(1), z.null()]).optional(),
 });
+
+export const shareModeSchema = z.enum(["view", "edit"]);
+
+export const shareTokenSchema = z
+  .string()
+  .trim()
+  .min(24)
+  .max(160)
+  .regex(/^[A-Za-z0-9_-]+$/);
+
+export const shareTokenArgsSchema = z.object({
+  token: shareTokenSchema,
+});
+
+export const sceneShareArgsSchema = z.object({
+  sceneId: z.string().min(1),
+  mode: shareModeSchema,
+});
+
+export const setSceneShareEnabledArgsSchema = sceneShareArgsSchema.extend({
+  enabled: z.boolean(),
+});
+
+export const commitSharedSceneSaveArgsSchema = z.object({
+  token: shareTokenSchema,
+  objectKey: z.string().min(1),
+  byteSize: z.number().int().nonnegative(),
+  contentHash: z.string().min(1),
+  thumbnailObjectKey: z.union([z.string().min(1), z.null()]).optional(),
+});

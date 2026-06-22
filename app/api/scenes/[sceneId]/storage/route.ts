@@ -15,7 +15,7 @@ export async function DELETE(_request: Request, ctx: SceneRouteContext) {
     return authResult.response;
   }
   const target = await deleteSceneObject({
-    ownerId: authResult.userId,
+    ownerId: authResult.access.storageOwnerId,
     sceneId,
   });
   return noStoreJson(target);

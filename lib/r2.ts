@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
@@ -149,4 +150,50 @@ export async function deleteSceneObject(args: { ownerId: string; sceneId: string
     client.send(new DeleteObjectCommand({ Bucket: bucket, Key: thumbnailKey })),
   ]);
   return { key };
+}
+
+export async function copySceneObject(args: {
+  sourceOwnerId: string;
+  sourceSceneId: string;
+  targetOwnerId: string;
+  targetSceneId: string;
+}) {
+  const { client, bucket } = getR2Client();
+  const sourceKey = buildSceneObjectKey(args.sourceOwnerId, args.sourceSceneId);
+  const targetKey = buildSceneObjectKey(args.targetOwnerId, args.targetSceneId);
+  await client.send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      CopySource: `${bucket}/${sourceKey}`,
+      Key: targetKey,
+      ContentType: "application/json",
+      MetadataDirective: "REPLACE",
+    }),
+  );
+  return { sourceKey, targetKey };
+}
+
+export async function copySceneThumbnailObject(args: {
+  sourceOwnerId: string;
+  sourceSceneId: string;
+  targetOwnerId: string;
+  targetSceneId: string;
+}) {
+  const { client, bucket } = getR2Client();
+  const sourceKey = buildSceneThumbnailObjectKey(args.sourceOwnerId, args.sourceSceneId);
+  const targetKey = buildSceneThumbnailObjectKey(args.targetOwnerId, args.targetSceneId);
+  try {
+    await client.send(
+      new CopyObjectCommand({
+        Bucket: bucket,
+        CopySource: `${bucket}/${sourceKey}`,
+        Key: targetKey,
+        ContentType: "image/png",
+        MetadataDirective: "REPLACE",
+      }),
+    );
+    return { sourceKey, targetKey };
+  } catch {
+    return null;
+  }
 }

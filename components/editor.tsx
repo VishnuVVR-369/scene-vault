@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowLeft, Check, CloudUpload, Loader2, Pencil, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, CloudUpload, Loader2, Pencil, Share2, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LogoMark } from "@/components/brand";
 import { ExcalidrawCanvas } from "@/components/excalidraw-canvas";
 import { LibraryProvider, useLibrary } from "@/components/library-provider";
+import { ShareSceneDialog } from "@/components/share-dialog";
 import { useTheme } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -60,6 +61,7 @@ function EditorContent({ sceneId }: { sceneId: string }) {
   );
   const [bundle, setBundle] = useState<SceneBundle | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveState>("idle");
+  const [shareOpen, setShareOpen] = useState(false);
 
   // `library` is a fresh object on every Convex update (and every save triggers
   // one), so depending on its identity would re-download the bundle and
@@ -143,6 +145,14 @@ function EditorContent({ sceneId }: { sceneId: string }) {
         <div className="ml-auto flex items-center gap-1.5">
           <SaveStatus state={saveStatus} />
           <ThemeToggle />
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Share scene"
+            onClick={() => setShareOpen(true)}
+          >
+            <Share2 />
+          </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button size="icon" variant="ghost" aria-label="Delete scene">
@@ -172,6 +182,11 @@ function EditorContent({ sceneId }: { sceneId: string }) {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          <ShareSceneDialog
+            sceneId={sceneId}
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+          />
         </div>
       </header>
       <section className="min-h-0 flex-1">

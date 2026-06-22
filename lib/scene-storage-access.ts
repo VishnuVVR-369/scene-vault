@@ -3,6 +3,7 @@ import { fetchQuery } from "convex/nextjs";
 import { makeFunctionReference } from "convex/server";
 
 type SceneStorageAccess = {
+  storageOwnerId: string;
   currentObjectKey: string | null;
   thumbnailObjectKey: string | null;
 };
@@ -61,7 +62,7 @@ export async function requireSceneStorageAccess(
         response: Response.json({ error: "Scene not found" }, { status: 404 }),
       };
     }
-    return { ok: true, userId, access };
+  return { ok: true, userId, access };
   } catch {
     return {
       ok: false,

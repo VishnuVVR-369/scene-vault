@@ -15,7 +15,7 @@ export async function POST(_request: Request, ctx: SceneRouteContext) {
     return authResult.response;
   }
   const target = await createSceneThumbnailUploadUrl({
-    ownerId: authResult.userId,
+    ownerId: authResult.access.storageOwnerId,
     sceneId,
   });
   return noStoreJson(target);

@@ -13,6 +13,7 @@ import {
   FolderPlus,
   MoreHorizontal,
   Search,
+  Share2,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Wordmark } from "@/components/brand";
 import { LibraryProvider, useLibrary } from "@/components/library-provider";
 import { SceneThumbnail } from "@/components/scene-thumbnail";
+import { ShareSceneDialog } from "@/components/share-dialog";
 import { useTheme } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -714,6 +716,7 @@ function FolderActions({ folderId }: { folderId: string }) {
 
 function SceneActions({ sceneId }: { sceneId: string }) {
   const library = useLibrary();
+  const [shareOpen, setShareOpen] = useState(false);
   return (
     <AlertDialog>
       <DropdownMenu>
@@ -728,6 +731,15 @@ function SceneActions({ sceneId }: { sceneId: string }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onSelect={(event) => {
+              event.preventDefault();
+              setShareOpen(true);
+            }}
+          >
+            <Share2 />
+            Share
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => library.duplicateScene(sceneId)}>
             <Copy />
             Duplicate
@@ -758,6 +770,11 @@ function SceneActions({ sceneId }: { sceneId: string }) {
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
+      <ShareSceneDialog
+        sceneId={sceneId}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
     </AlertDialog>
   );
 }

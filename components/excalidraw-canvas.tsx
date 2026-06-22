@@ -20,14 +20,16 @@ const Excalidraw = dynamic(
 
 type ExcalidrawCanvasProps = {
   initialBundle: SceneBundle;
-  onBundleChange: (bundle: SceneBundle) => void;
+  onBundleChange?: (bundle: SceneBundle) => void;
   theme?: "light" | "dark";
+  mode?: "view" | "edit";
 };
 
 export function ExcalidrawCanvas({
   initialBundle,
   onBundleChange,
   theme,
+  mode = "edit",
 }: ExcalidrawCanvasProps) {
   const parsedInitialBundle = useMemo(
     () => normalizeSceneBundle(initialBundle),
@@ -36,7 +38,7 @@ export function ExcalidrawCanvas({
   const bundleRef = useRef(parsedInitialBundle);
   const lastSignatureRef = useRef(sceneContentSignature(parsedInitialBundle));
   const emitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const e2eMode = process.env.NEXT_PUBLIC_E2E_MODE === "1";
+  const e2eMode = process.env.NEXT_PUBLIC_E2E_MODE === "1" && mode === "edit";
 
   // Drop any pending save if the component unmounts so a late timer can't fire
   // `onBundleChange` after the editor has navigated away.
@@ -105,7 +107,7 @@ export function ExcalidrawCanvas({
             });
             bundleRef.current = next;
             lastSignatureRef.current = sceneContentSignature(next);
-            onBundleChange(next);
+            onBundleChange?.(next);
           }}
         >
           Add test shape
@@ -114,7 +116,11 @@ export function ExcalidrawCanvas({
       <Excalidraw
         initialData={initialData}
         theme={theme}
+        viewModeEnabled={mode === "view"}
         onChange={(elements, appState, files) => {
+          if (mode !== "edit" || !onBundleChange) {
+            return;
+          }
           const next = normalizeSceneBundle({
             type: "excalidraw",
             version: 2,
