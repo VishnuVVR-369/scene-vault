@@ -50,9 +50,10 @@ import {
   updateScene as updateLocalScene,
 } from "@/lib/library-state";
 import {
-  renderSceneThumbnailBlob,
-  renderSceneThumbnailDataUrl,
-} from "@/lib/thumbnail";
+  putSceneBundleToSignedUrl,
+  uploadThumbnailViaSignedUrl,
+} from "@/lib/scene-transport";
+import { renderSceneThumbnailDataUrl } from "@/lib/thumbnail";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -142,6 +143,7 @@ const convexRefs = {
       objectKey: string;
       byteSize: number;
       contentHash: string;
+      thumbnailObjectKey?: string | null;
     },
     null
   >("library:commitSceneSave"),
@@ -360,32 +362,11 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
   // best-effort: any failure (empty scene, render error, network) returns null
   // so the save still commits without a thumbnail.
   const uploadRemoteSceneThumbnail = useCallback(
-    async (sceneId: string, bundle: SceneBundle): Promise<string | null> => {
-      try {
-        const blob = await renderSceneThumbnailBlob(bundle);
-        if (!blob) {
-          return null;
-        }
-        const signedResponse = await fetch(
-          `/api/scenes/${idSchema.parse(sceneId)}/thumbnail/upload`,
-          { method: "POST" },
-        );
-        if (!signedResponse.ok) {
-          return null;
-        }
-        const target = signedStorageTargetSchema.parse(
-          await signedResponse.json(),
-        );
-        const uploadResponse = await fetch(target.url, {
-          method: "PUT",
-          headers: { "content-type": "image/png" },
-          body: blob,
-        });
-        return uploadResponse.ok ? target.key : null;
-      } catch {
-        return null;
-      }
-    },
+    (sceneId: string, bundle: SceneBundle): Promise<string | null> =>
+      uploadThumbnailViaSignedUrl(
+        `/api/scenes/${idSchema.parse(sceneId)}/thumbnail/upload`,
+        bundle,
+      ),
     [],
   );
 
@@ -424,12 +405,8 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
         await signedResponse.json(),
       );
 
-      const uploadResponse = await fetch(target.url, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: serialized,
-      });
-      if (!uploadResponse.ok) {
+      const uploaded = await putSceneBundleToSignedUrl(target.url, serialized);
+      if (!uploaded) {
         throw new Error("Could not upload the scene bundle.");
       }
 

@@ -14,7 +14,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { sha256Hex } from "@/lib/hash";
-import { normalizeSceneBundle } from "@/lib/excalidraw-scene";
+import {
+  normalizeSceneBundle,
+  snapshotToSceneBundle,
+} from "@/lib/excalidraw-scene";
 
 import { LogoMark } from "@/components/brand";
 import { CollaborativeCanvas } from "@/components/collab/collaborative-canvas";
@@ -49,17 +52,6 @@ import { type SceneBundle } from "@/lib/domain";
 import type { BinaryFileData } from "@excalidraw/excalidraw/types";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
-
-function toSceneBundle(bundle: SnapshotBundle): SceneBundle {
-  return {
-    type: "excalidraw",
-    version: 2,
-    source: "scenevault",
-    elements: bundle.elements as SceneBundle["elements"],
-    appState: bundle.appState,
-    files: bundle.files as SceneBundle["files"],
-  };
-}
 
 function SaveStatus({ state }: { state: SaveState }) {
   const config = {
@@ -150,7 +142,7 @@ function EditorContent({ sceneId }: { sceneId: string }) {
 
   const onSnapshot = useCallback(
     async (snapshot: SnapshotBundle) => {
-      const sceneBundle = normalizeSceneBundle(toSceneBundle(snapshot));
+      const sceneBundle = normalizeSceneBundle(snapshotToSceneBundle(snapshot));
       const hash = await sha256Hex(JSON.stringify(sceneBundle));
       await libraryRef.current.saveSceneBundle(sceneId, sceneBundle);
       setBundle(sceneBundle);

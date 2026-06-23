@@ -23,31 +23,19 @@ import {
   type SceneBundle,
   type SharedSceneMetadata,
 } from "@/lib/domain";
-import { normalizeSceneBundle } from "@/lib/excalidraw-scene";
+import {
+  normalizeSceneBundle,
+  snapshotToSceneBundle,
+} from "@/lib/excalidraw-scene";
 import { sha256Hex } from "@/lib/hash";
-import { renderSceneThumbnailBlob } from "@/lib/thumbnail";
+import { fetchJson } from "@/lib/http";
+import {
+  putSceneBundleToSignedUrl,
+  uploadThumbnailViaSignedUrl,
+} from "@/lib/scene-transport";
 import { useTheme } from "@/components/theme-provider";
 
 type SharedEditorMode = "view" | "edit";
-
-async function fetchJson(url: string, init?: RequestInit) {
-  const response = await fetch(url, init);
-  if (!response.ok) {
-    throw new Error("Request failed");
-  }
-  return response.json();
-}
-
-function toSceneBundle(bundle: SnapshotBundle): SceneBundle {
-  return {
-    type: "excalidraw",
-    version: 2,
-    source: "scenevault",
-    elements: bundle.elements as SceneBundle["elements"],
-    appState: bundle.appState,
-    files: bundle.files as SceneBundle["files"],
-  };
-}
 
 export function SharedEditor({
   token,
@@ -114,25 +102,8 @@ export function SharedEditor({
   }, [mode, shareBase]);
 
   const uploadThumbnail = useCallback(
-    async (nextBundle: SceneBundle) => {
-      try {
-        const blob = await renderSceneThumbnailBlob(nextBundle);
-        if (!blob) {
-          return null;
-        }
-        const target = signedStorageTargetSchema.parse(
-          await fetchJson(`${shareBase}/thumbnail/upload`, { method: "POST" }),
-        );
-        const response = await fetch(target.url, {
-          method: "PUT",
-          headers: { "content-type": "image/png" },
-          body: blob,
-        });
-        return response.ok ? target.key : null;
-      } catch {
-        return null;
-      }
-    },
+    (nextBundle: SceneBundle) =>
+      uploadThumbnailViaSignedUrl(`${shareBase}/thumbnail/upload`, nextBundle),
     [shareBase],
   );
 
@@ -141,7 +112,7 @@ export function SharedEditor({
   const onSnapshot = useCallback(
     async (snapshot: SnapshotBundle): Promise<string | null> => {
       try {
-        const parsed = normalizeSceneBundle(toSceneBundle(snapshot));
+        const parsed = normalizeSceneBundle(snapshotToSceneBundle(snapshot));
         const serialized = JSON.stringify(parsed);
         const contentHash = await sha256Hex(serialized);
         if (lastSavedHashRef.current === contentHash) {
@@ -158,12 +129,8 @@ export function SharedEditor({
             }),
           }),
         );
-        const uploadResponse = await fetch(target.url, {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: serialized,
-        });
-        if (!uploadResponse.ok) {
+        const uploaded = await putSceneBundleToSignedUrl(target.url, serialized);
+        if (!uploaded) {
           throw new Error("Could not upload scene");
         }
         const thumbnailObjectKey = await uploadThumbnail(parsed);

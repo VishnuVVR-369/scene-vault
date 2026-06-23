@@ -24,82 +24,30 @@ import {
   roomRowsToElements,
   type SceneElementLike,
 } from "@/lib/collab/room-elements";
-import type { CollabIdentity } from "@/lib/collab/identity";
+
+import {
+  loadExcalidraw,
+  type ExcalidrawModule,
+  type Participant,
+  type RoomStatus,
+  type UseRoomArgs,
+  type UseRoomResult,
+} from "./use-room-types";
 
 import type {
-  BinaryFileData,
-  BinaryFiles,
   Collaborator,
   ExcalidrawImperativeAPI,
   SocketId,
 } from "@excalidraw/excalidraw/types";
 
-// Lazily loaded so the editor's SSR pass never touches Excalidraw (which needs
-// the DOM). The component bundle has already imported the module by the time we
-// have an API, so this resolves from cache immediately.
-type ExcalidrawModule = typeof import("@excalidraw/excalidraw");
-let excalidrawModulePromise: Promise<ExcalidrawModule> | null = null;
-function loadExcalidraw(): Promise<ExcalidrawModule> {
-  excalidrawModulePromise ??= import("@excalidraw/excalidraw");
-  return excalidrawModulePromise;
-}
-
-export type RoomStatus =
-  | "idle"
-  | "connecting"
-  | "hydrating"
-  | "ready"
-  | "ended"
-  | "revoked"
-  | "error";
-
-export type Participant = {
-  id: string;
-  name: string;
-  color: string;
-  isSelf: boolean;
-};
-
-export type SnapshotBundle = {
-  elements: SceneElementLike[];
-  appState: Record<string, unknown>;
-  files: BinaryFiles;
-};
-
-export type UseRoomArgs = {
-  enabled: boolean;
-  sceneId: string;
-  /** Edit share token (shared editor); omit for the signed-in owner. */
-  token?: string;
-  identity: CollabIdentity;
-  /** Elements loaded from R2 by the caller; used to seed a fresh room. */
-  initialElements: readonly SceneElementLike[];
-  contentHash: string | null;
-  /** Whether this client may persist to R2 (signed in). Guests cannot. */
-  canSnapshot: boolean;
-  /** Persist the live scene to R2; returns the content hash, or null on failure. */
-  onSnapshot: (bundle: SnapshotBundle) => Promise<string | null>;
-  /** Fetch missing image blobs (by id) so they can be added to the scene. */
-  onLoadFiles?: (fileIds: string[]) => Promise<BinaryFileData[]>;
-};
-
-export type UseRoomResult = {
-  status: RoomStatus;
-  participants: Participant[];
-  isSnapshotter: boolean;
-  canStop: boolean;
-  stopRoom: () => Promise<void>;
-  onApi: (api: ExcalidrawImperativeAPI) => void;
-  onSceneChange: (
-    elements: readonly SceneElementLike[],
-    appState: { selectedElementIds?: Record<string, unknown> },
-    files: BinaryFiles,
-  ) => void;
-  onPointerUpdate: (payload: {
-    pointer: { x: number; y: number };
-    button: "down" | "up";
-  }) => void;
-};
+// Re-exported so existing `@/components/collab/use-room` imports keep resolving.
+export type {
+  Participant,
+  RoomStatus,
+  SnapshotBundle,
+  UseRoomArgs,
+  UseRoomResult,
+} from "./use-room-types";
 
 export function useRoom(args: UseRoomArgs): UseRoomResult {
   const {

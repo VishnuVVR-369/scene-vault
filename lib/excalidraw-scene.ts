@@ -69,6 +69,25 @@ export function normalizeSceneBundle(bundle: unknown): SceneBundle {
   });
 }
 
+// Wrap the raw {elements, appState, files} captured from a live Excalidraw scene
+// (e.g. a collab snapshot) in the persistable bundle envelope. Typed structurally
+// so this module stays free of Excalidraw/React imports; callers pass their own
+// `SnapshotBundle`. The result still needs `normalizeSceneBundle` before saving.
+export function snapshotToSceneBundle(snapshot: {
+  elements: unknown[];
+  appState: Record<string, unknown>;
+  files: unknown;
+}): SceneBundle {
+  return {
+    type: "excalidraw",
+    version: 2,
+    source: "scenevault",
+    elements: snapshot.elements as SceneBundle["elements"],
+    appState: snapshot.appState,
+    files: snapshot.files as SceneBundle["files"],
+  };
+}
+
 // Stable string describing only the persistable content of a scene. Two
 // normalized bundles with the same signature are byte-identical once saved, so
 // callers can use it to skip redundant work (re-render-triggered `onChange`,

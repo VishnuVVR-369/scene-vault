@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { fetchMutation } from "convex/nextjs";
 import { makeFunctionReference } from "convex/server";
-import { z, ZodError } from "zod";
+import { z } from "zod";
 
-import { noStoreJson } from "@/lib/scene-storage-access";
+import { noStoreJson, parseJsonBody } from "@/lib/scene-storage-access";
 import {
   referrerSafeHeaders,
   requireSharedSceneAccess,
@@ -44,15 +44,15 @@ export async function POST(request: Request, ctx: ShareRouteContext) {
     return accessResult.response;
   }
 
-  let body;
-  try {
-    body = commitBodySchema.parse(await request.json());
-  } catch (error) {
-    if (error instanceof ZodError || error instanceof SyntaxError) {
-      return noStoreJson({ error: "Invalid commit request" }, { status: 400 });
-    }
-    throw error;
+  const bodyResult = await parseJsonBody(
+    request,
+    commitBodySchema,
+    "Invalid commit request",
+  );
+  if (!bodyResult.ok) {
+    return bodyResult.response;
   }
+  const body = bodyResult.data;
 
   const { getToken } = await auth();
   const convexToken = await getToken({ template: "convex" });

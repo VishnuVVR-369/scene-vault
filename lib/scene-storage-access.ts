@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { fetchQuery } from "convex/nextjs";
 import { makeFunctionReference } from "convex/server";
+import { z, ZodError } from "zod";
 
 type SceneStorageAccess = {
   storageOwnerId: string;
@@ -75,4 +76,27 @@ export function noStoreJson(data: unknown, init?: ResponseInit) {
   const headers = new Headers(init?.headers);
   headers.set("cache-control", "no-store");
   return Response.json(data, { ...init, headers });
+}
+
+// Parse and validate a JSON request body against a Zod schema. A malformed body
+// (invalid JSON or a schema mismatch) yields a 400 carrying `errorMessage`;
+// anything unexpected re-throws. Callers branch on `ok` rather than try/catch.
+export async function parseJsonBody<S extends z.ZodType>(
+  request: Request,
+  schema: S,
+  errorMessage: string,
+): Promise<
+  { ok: true; data: z.infer<S> } | { ok: false; response: Response }
+> {
+  try {
+    return { ok: true, data: schema.parse(await request.json()) };
+  } catch (error) {
+    if (error instanceof ZodError || error instanceof SyntaxError) {
+      return {
+        ok: false,
+        response: noStoreJson({ error: errorMessage }, { status: 400 }),
+      };
+    }
+    throw error;
+  }
 }

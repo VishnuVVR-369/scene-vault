@@ -13,13 +13,14 @@ import {
   shareTokenArgsSchema,
   updateSceneArgsSchema,
 } from "./validation";
+import { deleteCollabRowsForScene } from "./collabDb";
 import {
   mutation,
   query,
   type DatabaseReader,
   type DatabaseWriter,
 } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 async function requireOwnerId(ctx: {
   auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
@@ -31,12 +32,86 @@ async function requireOwnerId(ctx: {
   return identity.subject;
 }
 
+// Fetch a scene the caller owns, or throw. Ownership failures are reported as
+// "not found" so we never reveal that another user's scene exists.
+async function requireOwnedScene(
+  db: DatabaseReader,
+  sceneId: Id<"scenes">,
+  ownerId: string,
+) {
+  const scene = await db.get(sceneId);
+  if (!scene || scene.ownerId !== ownerId) {
+    throw new Error("Scene not found");
+  }
+  return scene;
+}
+
+// Fetch a folder the caller owns, or throw. `errorMessage` distinguishes the
+// folder being acted on ("Folder not found") from a referenced parent
+// ("Parent folder not found").
+async function requireOwnedFolder(
+  db: DatabaseReader,
+  folderId: Id<"folders">,
+  ownerId: string,
+  errorMessage = "Folder not found",
+) {
+  const folder = await db.get(folderId);
+  if (!folder || folder.ownerId !== ownerId) {
+    throw new Error(errorMessage);
+  }
+  return folder;
+}
+
 function buildSceneObjectKey(ownerId: string, sceneId: string) {
   return `users/${encodeURIComponent(ownerId)}/scenes/${encodeURIComponent(sceneId)}/head/excalidraw.json`;
 }
 
 function buildSceneThumbnailObjectKey(ownerId: string, sceneId: string) {
   return `users/${encodeURIComponent(ownerId)}/scenes/${encodeURIComponent(sceneId)}/head/thumbnail.png`;
+}
+
+// The client uploads to a key it computes; reject anything that doesn't match
+// the canonical owner/scene key so a save can't write outside its own slot.
+function assertValidSceneObjectKeys(
+  ownerId: string,
+  sceneId: Id<"scenes">,
+  input: { objectKey: string; thumbnailObjectKey?: string | null },
+) {
+  if (input.objectKey !== buildSceneObjectKey(ownerId, sceneId)) {
+    throw new Error("Invalid scene object key");
+  }
+  if (
+    input.thumbnailObjectKey &&
+    input.thumbnailObjectKey !== buildSceneThumbnailObjectKey(ownerId, sceneId)
+  ) {
+    throw new Error("Invalid scene thumbnail object key");
+  }
+}
+
+// The patch applied by both the owner and shared-edit save commits. The
+// thumbnail pointer is only touched when the client supplied one, so a failed
+// thumbnail upload never wipes an existing preview.
+function buildSceneSavePatch(
+  scene: Doc<"scenes">,
+  input: {
+    objectKey: string;
+    byteSize: number;
+    contentHash: string;
+    thumbnailObjectKey?: string | null;
+  },
+  now: number,
+) {
+  return {
+    currentObjectKey: input.objectKey,
+    byteSize: input.byteSize,
+    contentHash: input.contentHash,
+    version: scene.version + 1,
+    updatedAt: now,
+    lastSavedAt: now,
+    ...(input.thumbnailObjectKey === undefined
+      ? {}
+      : { thumbnailObjectKey: input.thumbnailObjectKey }),
+  };
 }
 
 function generateShareToken() {
@@ -78,51 +153,6 @@ async function deleteSharesForScene(db: DatabaseWriter, sceneId: Id<"scenes">) {
   ]);
   for (const share of shares.flat()) {
     await db.delete(share._id);
-  }
-}
-
-async function deleteCollabRowsForScene(
-  db: DatabaseWriter,
-  sceneId: Id<"scenes">,
-) {
-  const elements = await db
-    .query("roomElements")
-    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
-    .collect();
-  for (const element of elements) {
-    await db.delete(element._id);
-  }
-
-  const presenceRows = await db
-    .query("presence")
-    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
-    .collect();
-  for (const presence of presenceRows) {
-    await db.delete(presence._id);
-  }
-
-  const sessions = await db
-    .query("roomSessions")
-    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
-    .collect();
-  for (const session of sessions) {
-    await db.delete(session._id);
-  }
-
-  const rateLimits = await db
-    .query("collabRateLimits")
-    .withIndex("by_key", (q) => q.eq("sceneId", sceneId))
-    .collect();
-  for (const rateLimit of rateLimits) {
-    await db.delete(rateLimit._id);
-  }
-
-  const room = await db
-    .query("liveRooms")
-    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
-    .unique();
-  if (room) {
-    await db.delete(room._id);
   }
 }
 
@@ -181,10 +211,7 @@ export const getSharesForScene = query({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     sceneShareArgsSchema.parse({ sceneId: args.sceneId, mode: "view" });
-    const scene = await ctx.db.get(args.sceneId);
-    if (!scene || scene.ownerId !== ownerId) {
-      throw new Error("Scene not found");
-    }
+    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
     const [viewShare, editShare] = await Promise.all([
       ctx.db
         .query("sceneShares")
@@ -226,10 +253,7 @@ export const createOrRotateShare = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     const input = sceneShareArgsSchema.parse(args);
-    const scene = await ctx.db.get(args.sceneId);
-    if (!scene || scene.ownerId !== ownerId) {
-      throw new Error("Scene not found");
-    }
+    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
     const token = await generateUniqueShareToken(ctx.db);
     const now = Date.now();
     const existing = await ctx.db
@@ -268,10 +292,7 @@ export const setShareEnabled = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     const input = setSceneShareEnabledArgsSchema.parse(args);
-    const scene = await ctx.db.get(args.sceneId);
-    if (!scene || scene.ownerId !== ownerId) {
-      throw new Error("Scene not found");
-    }
+    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
     const existing = await ctx.db
       .query("sceneShares")
       .withIndex("by_scene_mode", (q) =>
@@ -326,10 +347,12 @@ export const createFolder = mutation({
     const ownerId = await requireOwnerId(ctx);
     const input = createFolderArgsSchema.parse(args);
     if (args.parentFolderId) {
-      const parent = await ctx.db.get(args.parentFolderId);
-      if (!parent || parent.ownerId !== ownerId) {
-        throw new Error("Parent folder not found");
-      }
+      await requireOwnedFolder(
+        ctx.db,
+        args.parentFolderId,
+        ownerId,
+        "Parent folder not found",
+      );
     }
     const now = Date.now();
     return await ctx.db.insert("folders", {
@@ -350,10 +373,7 @@ export const renameFolder = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     const input = renameFolderArgsSchema.parse(args);
-    const folder = await ctx.db.get(args.folderId);
-    if (!folder || folder.ownerId !== ownerId) {
-      throw new Error("Folder not found");
-    }
+    await requireOwnedFolder(ctx.db, args.folderId, ownerId);
     await ctx.db.patch(args.folderId, {
       name: input.name,
       updatedAt: Date.now(),
@@ -369,18 +389,17 @@ export const moveFolder = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     moveFolderArgsSchema.parse(args);
-    const folder = await ctx.db.get(args.folderId);
-    if (!folder || folder.ownerId !== ownerId) {
-      throw new Error("Folder not found");
-    }
+    await requireOwnedFolder(ctx.db, args.folderId, ownerId);
     if (args.parentFolderId === args.folderId) {
       throw new Error("A folder cannot be moved into itself.");
     }
     if (args.parentFolderId) {
-      const parent = await ctx.db.get(args.parentFolderId);
-      if (!parent || parent.ownerId !== ownerId) {
-        throw new Error("Parent folder not found");
-      }
+      const parent = await requireOwnedFolder(
+        ctx.db,
+        args.parentFolderId,
+        ownerId,
+        "Parent folder not found",
+      );
       const allFolders = await ctx.db
         .query("folders")
         .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
@@ -409,10 +428,7 @@ export const deleteFolder = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     idArgsSchema.parse({ id: args.folderId });
-    const folder = await ctx.db.get(args.folderId);
-    if (!folder || folder.ownerId !== ownerId) {
-      throw new Error("Folder not found");
-    }
+    await requireOwnedFolder(ctx.db, args.folderId, ownerId);
     const allFolders = await ctx.db
       .query("folders")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
@@ -459,10 +475,7 @@ export const createScene = mutation({
     const ownerId = await requireOwnerId(ctx);
     const input = createSceneArgsSchema.parse(args);
     if (args.folderId) {
-      const folder = await ctx.db.get(args.folderId);
-      if (!folder || folder.ownerId !== ownerId) {
-        throw new Error("Folder not found");
-      }
+      await requireOwnedFolder(ctx.db, args.folderId, ownerId);
     }
     const now = Date.now();
     return await ctx.db.insert("scenes", {
@@ -490,15 +503,9 @@ export const updateScene = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     const input = updateSceneArgsSchema.parse(args);
-    const scene = await ctx.db.get(args.sceneId);
-    if (!scene || scene.ownerId !== ownerId) {
-      throw new Error("Scene not found");
-    }
+    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
     if (args.folderId) {
-      const folder = await ctx.db.get(args.folderId);
-      if (!folder || folder.ownerId !== ownerId) {
-        throw new Error("Folder not found");
-      }
+      await requireOwnedFolder(ctx.db, args.folderId, ownerId);
     }
     await ctx.db.patch(args.sceneId, {
       ...(input.title === undefined ? {} : { title: input.title }),
@@ -513,10 +520,7 @@ export const deleteScene = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     idArgsSchema.parse({ id: args.sceneId });
-    const scene = await ctx.db.get(args.sceneId);
-    if (!scene || scene.ownerId !== ownerId) {
-      throw new Error("Scene not found");
-    }
+    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
     await deleteSharesForScene(ctx.db, args.sceneId);
     await deleteCollabRowsForScene(ctx.db, args.sceneId);
     await ctx.db.delete(args.sceneId);
@@ -528,10 +532,7 @@ export const duplicateScene = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     idArgsSchema.parse({ id: args.sceneId });
-    const scene = await ctx.db.get(args.sceneId);
-    if (!scene || scene.ownerId !== ownerId) {
-      throw new Error("Scene not found");
-    }
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerId);
     const now = Date.now();
     return await ctx.db.insert("scenes", {
       ownerId,
@@ -560,39 +561,17 @@ export const commitSceneSave = mutation({
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
     const input = commitSceneSaveArgsSchema.parse(args);
-    const scene = await ctx.db.get(args.sceneId);
-    if (!scene || scene.ownerId !== ownerId) {
-      throw new Error("Scene not found");
-    }
-    if (input.objectKey !== buildSceneObjectKey(ownerId, args.sceneId)) {
-      throw new Error("Invalid scene object key");
-    }
-    if (
-      input.thumbnailObjectKey &&
-      input.thumbnailObjectKey !==
-        buildSceneThumbnailObjectKey(ownerId, args.sceneId)
-    ) {
-      throw new Error("Invalid scene thumbnail object key");
-    }
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerId);
+    assertValidSceneObjectKeys(ownerId, args.sceneId, input);
     // No-op when the content is unchanged: skipping the patch avoids a version
     // bump that would re-fire the getLibrary subscription and re-render clients.
     if (scene.contentHash === input.contentHash) {
       return;
     }
-    const now = Date.now();
-    await ctx.db.patch(args.sceneId, {
-      currentObjectKey: input.objectKey,
-      byteSize: input.byteSize,
-      contentHash: input.contentHash,
-      version: scene.version + 1,
-      updatedAt: now,
-      lastSavedAt: now,
-      // Only touch the thumbnail pointer when the client managed to render and
-      // upload one; a failed thumbnail must not wipe an existing preview.
-      ...(input.thumbnailObjectKey === undefined
-        ? {}
-        : { thumbnailObjectKey: input.thumbnailObjectKey }),
-    });
+    await ctx.db.patch(
+      args.sceneId,
+      buildSceneSavePatch(scene, input, Date.now()),
+    );
   },
 });
 
@@ -613,30 +592,13 @@ export const commitSharedSceneSave = mutation({
     }
     const sceneId = result.scene._id;
     const storageOwnerId = result.scene.ownerId;
-    if (input.objectKey !== buildSceneObjectKey(storageOwnerId, sceneId)) {
-      throw new Error("Invalid scene object key");
-    }
-    if (
-      input.thumbnailObjectKey &&
-      input.thumbnailObjectKey !==
-        buildSceneThumbnailObjectKey(storageOwnerId, sceneId)
-    ) {
-      throw new Error("Invalid scene thumbnail object key");
-    }
+    assertValidSceneObjectKeys(storageOwnerId, sceneId, input);
     if (result.scene.contentHash === input.contentHash) {
       return;
     }
-    const now = Date.now();
-    await ctx.db.patch(sceneId, {
-      currentObjectKey: input.objectKey,
-      byteSize: input.byteSize,
-      contentHash: input.contentHash,
-      version: result.scene.version + 1,
-      updatedAt: now,
-      lastSavedAt: now,
-      ...(input.thumbnailObjectKey === undefined
-        ? {}
-        : { thumbnailObjectKey: input.thumbnailObjectKey }),
-    });
+    await ctx.db.patch(
+      sceneId,
+      buildSceneSavePatch(result.scene, input, Date.now()),
+    );
   },
 });

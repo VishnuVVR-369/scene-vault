@@ -16,7 +16,15 @@ import {
   validateElementBatch,
   type BucketState,
 } from "./collabLogic";
-import { shareTokenSchema } from "./validation";
+import { deleteCollabRowsForScene } from "./collabDb";
+import {
+  authorizeEdit,
+  getUserId,
+  hashSecret,
+  randomHex,
+  verifySession,
+  type AuthorizedScene,
+} from "./collabAuth";
 import {
   internalMutation,
   mutation,
@@ -30,97 +38,6 @@ import type { Doc, Id } from "./_generated/dataModel";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function randomHex(byteLength: number) {
-  const bytes = new Uint8Array(byteLength);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
-}
-
-async function hashSecret(secret: string) {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(secret),
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
-async function getUserId(ctx: {
-  auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
-}) {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? null;
-}
-
-type AuthorizedScene = {
-  scene: Doc<"scenes">;
-  ownerId: string;
-  viaOwner: boolean;
-  userId: string | null;
-};
-
-/**
- * Authorize edit access to a scene via the signed-in owner OR a valid, enabled
- * edit share token. Reads `sceneShares` on the token path so reactive queries
- * re-run (and revoke) the instant a share is disabled.
- */
-async function authorizeEdit(
-  ctx: {
-    db: DatabaseReader;
-    auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
-  },
-  args: { sceneId: Id<"scenes">; token?: string | null },
-): Promise<AuthorizedScene | null> {
-  const scene = await ctx.db.get(args.sceneId);
-  if (!scene) {
-    return null;
-  }
-  const userId = await getUserId(ctx);
-  if (userId && scene.ownerId === userId) {
-    return { scene, ownerId: scene.ownerId, viaOwner: true, userId };
-  }
-  if (args.token) {
-    const parsed = shareTokenSchema.safeParse(args.token);
-    if (!parsed.success) {
-      return null;
-    }
-    const share = await ctx.db
-      .query("sceneShares")
-      .withIndex("by_token", (q) => q.eq("token", parsed.data))
-      .unique();
-    if (
-      share &&
-      share.enabled &&
-      share.mode === "edit" &&
-      share.sceneId === args.sceneId &&
-      share.ownerId === scene.ownerId
-    ) {
-      return { scene, ownerId: scene.ownerId, viaOwner: false, userId };
-    }
-  }
-  return null;
-}
-
-async function verifySession(
-  ctx: { db: DatabaseReader },
-  args: { sceneId: Id<"scenes">; roomSessionId: string; sessionSecret: string },
-): Promise<Doc<"roomSessions"> | null> {
-  const session = await ctx.db
-    .query("roomSessions")
-    .withIndex("by_room_session", (q) =>
-      q.eq("sceneId", args.sceneId).eq("roomSessionId", args.roomSessionId),
-    )
-    .unique();
-  if (!session) {
-    return null;
-  }
-  const hash = await hashSecret(args.sessionSecret);
-  return hash === session.sessionSecretHash ? session : null;
-}
-
 async function getRoom(ctx: { db: DatabaseReader }, sceneId: Id<"scenes">) {
   return ctx.db
     .query("liveRooms")
@@ -130,6 +47,36 @@ async function getRoom(ctx: { db: DatabaseReader }, sceneId: Id<"scenes">) {
 
 function roomIsActive(room: Doc<"liveRooms"> | null | undefined) {
   return Boolean(room && room.startedByUserId && !room.stoppedAt);
+}
+
+// The guard shared by live-write mutations any participant may call: a verified
+// session, edit authorization, and an active room. Returns the session/auth so
+// callers that need e.g. `session.userId` can use them.
+async function requireActiveSession(
+  ctx: {
+    db: DatabaseReader;
+    auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
+  },
+  args: {
+    sceneId: Id<"scenes">;
+    token?: string | null;
+    roomSessionId: string;
+    sessionSecret: string;
+  },
+): Promise<{ session: Doc<"roomSessions">; auth: AuthorizedScene }> {
+  const session = await verifySession(ctx, args);
+  if (!session) {
+    throw new Error("Invalid session");
+  }
+  const auth = await authorizeEdit(ctx, args);
+  if (!auth) {
+    throw new Error("Not authorized");
+  }
+  const room = await getRoom(ctx, args.sceneId);
+  if (!roomIsActive(room)) {
+    throw new Error("Room is not active");
+  }
+  return { session, auth };
 }
 
 async function getMaxElementUpdatedAt(
@@ -145,41 +92,6 @@ async function getMaxElementUpdatedAt(
     maxElementUpdatedAt = Math.max(maxElementUpdatedAt ?? 0, element.updatedAt);
   }
   return { elements, maxElementUpdatedAt };
-}
-
-async function deleteLiveRoomRows(db: DatabaseWriter, sceneId: Id<"scenes">) {
-  const elements = await db
-    .query("roomElements")
-    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
-    .collect();
-  for (const element of elements) {
-    await db.delete(element._id);
-  }
-  const presenceRows = await db
-    .query("presence")
-    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
-    .collect();
-  for (const presence of presenceRows) {
-    await db.delete(presence._id);
-  }
-  const sessions = await db
-    .query("roomSessions")
-    .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
-    .collect();
-  for (const session of sessions) {
-    await db.delete(session._id);
-  }
-  const rateLimits = await db
-    .query("collabRateLimits")
-    .withIndex("by_key", (q) => q.eq("sceneId", sceneId))
-    .collect();
-  for (const limit of rateLimits) {
-    await db.delete(limit._id);
-  }
-  const room = await getRoom({ db }, sceneId);
-  if (room) {
-    await db.delete(room._id);
-  }
 }
 
 /** Token-bucket rate limit gate for a (session, action). Throws when exceeded. */
@@ -262,7 +174,7 @@ export const startRoom = mutation({
       };
     }
     if (existing) {
-      await deleteLiveRoomRows(ctx.db, args.sceneId);
+      await deleteCollabRowsForScene(ctx.db, args.sceneId);
     }
     const status = auth.scene.currentObjectKey ? "needsHydration" : "ready";
     await ctx.db.insert("liveRooms", {
@@ -545,18 +457,7 @@ export const pushElements = mutation({
     elements: v.array(v.any()),
   },
   handler: async (ctx, args) => {
-    const session = await verifySession(ctx, args);
-    if (!session) {
-      throw new Error("Invalid session");
-    }
-    const auth = await authorizeEdit(ctx, args);
-    if (!auth) {
-      throw new Error("Not authorized");
-    }
-    const room = await getRoom(ctx, args.sceneId);
-    if (!roomIsActive(room)) {
-      throw new Error("Room is not active");
-    }
+    await requireActiveSession(ctx, args);
     const now = Date.now();
     await enforceRateLimit(ctx, { ...args, action: "pushElements" }, now);
     const batch = validateElementBatch(args.elements);
@@ -625,18 +526,7 @@ export const updatePresence = mutation({
     selectedIds: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const session = await verifySession(ctx, args);
-    if (!session) {
-      throw new Error("Invalid session");
-    }
-    const auth = await authorizeEdit(ctx, args);
-    if (!auth) {
-      throw new Error("Not authorized");
-    }
-    const room = await getRoom(ctx, args.sceneId);
-    if (!roomIsActive(room)) {
-      throw new Error("Room is not active");
-    }
+    const { session } = await requireActiveSession(ctx, args);
     const now = Date.now();
     await enforceRateLimit(ctx, { ...args, action: "updatePresence" }, now);
     const fields = {
@@ -718,7 +608,7 @@ export const stopRoom = mutation({
     if (roomIsDirty(maxElementUpdatedAt, room!.snapshotMaxUpdatedAt)) {
       throw new Error("Room has unsaved changes");
     }
-    await deleteLiveRoomRows(ctx.db, args.sceneId);
+    await deleteCollabRowsForScene(ctx.db, args.sceneId);
     return null;
   },
 });
