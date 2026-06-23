@@ -1616,38 +1616,6 @@ tests/          Playwright e2e + collab smoke suites`}
             </div>
           </div>
         </main>
-
-        {/* On this page (right rail) */}
-        <aside className="hidden w-52 shrink-0 xl:block">
-          <div className="sticky top-24 py-14">
-            <p className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              On this page
-            </p>
-            <ul className="mt-3 space-y-1.5 border-l border-border">
-              {ALL_IDS.map((id) => {
-                const label = NAV.flatMap((g) => g.items).find(
-                  (i) => i.id === id,
-                )?.label;
-                const active = activeId === id;
-                return (
-                  <li key={id}>
-                    <a
-                      href={`#${id}`}
-                      className={cn(
-                        "-ml-px block border-l-2 pl-3 text-sm transition-colors",
-                        active
-                          ? "border-primary font-medium text-primary"
-                          : "border-transparent text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {label}
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </aside>
       </div>
     </div>
   );
