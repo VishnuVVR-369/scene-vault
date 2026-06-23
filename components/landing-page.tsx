@@ -301,6 +301,9 @@ export function LandingPage() {
             <Button asChild variant="ghost" size="sm" className="h-9 px-3.5">
               <Link href="#how">How it works</Link>
             </Button>
+            <Button asChild variant="ghost" size="sm" className="h-9 px-3.5">
+              <Link href="/docs">Docs</Link>
+            </Button>
           </nav>
           <div className="flex items-center gap-1.5">
             <ThemeToggle />
@@ -469,6 +472,9 @@ export function LandingPage() {
             </Link>
             <Link href="#how" className="hover:text-foreground">
               How it works
+            </Link>
+            <Link href="/docs" className="hover:text-foreground">
+              Docs
             </Link>
           </div>
         </div>

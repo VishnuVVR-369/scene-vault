@@ -129,7 +129,12 @@ function DashboardContent() {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <div className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/85 px-4 backdrop-blur-md">
         <Wordmark href="/" />
-        <AccountControls />
+        <div className="flex items-center gap-1.5">
+          <Button asChild variant="ghost" size="sm" className="h-9 px-3.5">
+            <Link href="/docs">Docs</Link>
+          </Button>
+          <AccountControls />
+        </div>
       </div>
 
       <main className="grid flex-1 grid-cols-1 md:grid-cols-[280px_1fr]">
