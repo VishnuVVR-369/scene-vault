@@ -129,7 +129,10 @@ export function SharedEditor({
             }),
           }),
         );
-        const uploaded = await putSceneBundleToSignedUrl(target.url, serialized);
+        const uploaded = await putSceneBundleToSignedUrl(
+          target.url,
+          serialized,
+        );
         if (!uploaded) {
           throw new Error("Could not upload scene");
         }

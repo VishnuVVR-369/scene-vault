@@ -27,7 +27,10 @@ export function sortScenes(scenes: SceneMetadata[], sort: SortKey) {
 
 // Direct children of a folder (or the roots when `parentFolderId` is null),
 // sorted by name — the ordering used by both the sidebar tree and folder cards.
-export function childFoldersOf(folders: Folder[], parentFolderId: string | null) {
+export function childFoldersOf(
+  folders: Folder[],
+  parentFolderId: string | null,
+) {
   return folders
     .filter((folder) => folder.parentFolderId === parentFolderId)
     .sort((a, b) => a.name.localeCompare(b.name));

@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 export function FolderDialog({
   parentFolderId,
@@ -86,9 +87,11 @@ export function FolderDialog({
 export function SceneDialog({
   folderId,
   onCreate,
+  className,
 }: {
   folderId: string | null;
   onCreate: (title: string, folderId: string | null) => Promise<string>;
+  className?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -118,7 +121,10 @@ export function SceneDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button onClick={() => setOpen(true)} className="shadow-sketch-sm">
+      <Button
+        onClick={() => setOpen(true)}
+        className={cn("shadow-sketch-sm", className)}
+      >
         <FilePlus2 />
         New scene
       </Button>

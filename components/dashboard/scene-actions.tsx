@@ -101,7 +101,7 @@ export function SceneActions({
             size="icon-sm"
             variant="ghost"
             disabled={busy}
-            className="opacity-60 group-hover:opacity-100 aria-expanded:opacity-100"
+            className="opacity-100 transition-opacity group-hover:opacity-100 aria-expanded:opacity-100 sm:opacity-60"
           >
             {busy ? <Loader2 className="animate-spin" /> : <MoreHorizontal />}
           </Button>

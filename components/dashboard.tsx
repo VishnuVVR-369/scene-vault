@@ -1,6 +1,13 @@
 "use client";
 
-import { ChevronRight, FilePlus2, Pin, Search, Sparkles } from "lucide-react";
+import {
+  ChevronRight,
+  FilePlus2,
+  PanelLeft,
+  Pin,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
@@ -18,12 +25,77 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { filterScenes, getFolderPath } from "@/lib/library-state";
+
+// The library navigation (All scenes + folder tree), shared by the desktop
+// sidebar and the mobile drawer. `onSelect` lets the caller close the drawer
+// after a pick on mobile while plain selecting on desktop.
+function LibraryNav({
+  activeFolderId,
+  onSelect,
+  sceneCounts,
+}: {
+  activeFolderId: string | null;
+  onSelect: (folderId: string | null) => void;
+  sceneCounts: Map<string, number>;
+}) {
+  const library = useLibrary();
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex h-14 shrink-0 items-center justify-between px-4">
+        <p className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground">
+          Library
+        </p>
+        <FolderDialog
+          parentFolderId={activeFolderId}
+          onCreate={library.createFolder}
+        />
+      </div>
+      <Separator />
+      <ScrollArea className="min-h-0 flex-1">
+        <nav className="space-y-1 p-3">
+          <Button
+            className="w-full justify-start gap-2"
+            variant={activeFolderId === null ? "secondary" : "ghost"}
+            onClick={() => onSelect(null)}
+          >
+            <Sparkles
+              className={activeFolderId === null ? "text-primary" : ""}
+            />
+            All scenes
+            <span className="ml-auto font-mono text-xs text-muted-foreground">
+              {library.scenes.length}
+            </span>
+          </Button>
+          <FolderTree
+            parentFolderId={null}
+            activeFolderId={activeFolderId}
+            onSelect={onSelect}
+            sceneCounts={sceneCounts}
+          />
+          {library.folders.length === 0 ? (
+            <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+              No folders yet. Make one to start organizing.
+            </p>
+          ) : null}
+        </nav>
+      </ScrollArea>
+    </div>
+  );
+}
 
 function DashboardContent() {
   const library = useLibrary();
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -128,73 +200,78 @@ function DashboardContent() {
         </div>
       </div>
 
+      {/* Mobile: the library lives in a slide-in drawer instead of stacking
+          on top of the scenes and shoving them off-screen. */}
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className="w-[300px] max-w-[85vw] gap-0 bg-sidebar p-0"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Library</SheetTitle>
+            <SheetDescription>Browse your folders and scenes.</SheetDescription>
+          </SheetHeader>
+          <LibraryNav
+            activeFolderId={activeFolderId}
+            onSelect={(folderId) => {
+              setActiveFolderId(folderId);
+              setMobileNavOpen(false);
+            }}
+            sceneCounts={sceneCounts}
+          />
+        </SheetContent>
+      </Sheet>
+
       <main className="grid flex-1 grid-cols-1 md:grid-cols-[280px_1fr]">
-        <aside className="border-b border-border bg-sidebar md:border-b-0 md:border-r">
-          <div className="flex h-14 items-center justify-between px-4">
-            <p className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground">
-              Library
-            </p>
-            <FolderDialog
-              parentFolderId={activeFolderId}
-              onCreate={library.createFolder}
+        <aside className="hidden border-border bg-sidebar md:block md:border-r">
+          <div className="sticky top-16 h-[calc(100dvh-4rem)]">
+            <LibraryNav
+              activeFolderId={activeFolderId}
+              onSelect={setActiveFolderId}
+              sceneCounts={sceneCounts}
             />
           </div>
-          <Separator />
-          <ScrollArea className="h-[calc(100vh-7.5rem)]">
-            <nav className="space-y-1 p-3">
-              <Button
-                className="w-full justify-start gap-2"
-                variant={activeFolderId === null ? "secondary" : "ghost"}
-                onClick={() => setActiveFolderId(null)}
-              >
-                <Sparkles
-                  className={activeFolderId === null ? "text-primary" : ""}
-                />
-                All scenes
-                <span className="ml-auto font-mono text-xs text-muted-foreground">
-                  {library.scenes.length}
-                </span>
-              </Button>
-              <FolderTree
-                parentFolderId={null}
-                activeFolderId={activeFolderId}
-                onSelect={setActiveFolderId}
-                sceneCounts={sceneCounts}
-              />
-              {library.folders.length === 0 ? (
-                <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-                  No folders yet. Make one to start organizing.
-                </p>
-              ) : null}
-            </nav>
-          </ScrollArea>
         </aside>
 
         <section className="bg-paper-dots min-w-0">
-          <header className="flex min-h-16 flex-col gap-3 border-b border-border bg-background/70 px-4 py-3 backdrop-blur-sm lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                {folderPath.map((part, index) => (
-                  <span
-                    key={`${part}-${index}`}
-                    className="inline-flex items-center gap-1"
-                  >
-                    {index > 0 ? <ChevronRight className="size-3" /> : null}
-                    {part}
+          <header className="sticky top-16 z-20 flex min-h-16 flex-col gap-3 border-b border-border bg-background/80 px-4 py-3 backdrop-blur-md lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon-lg"
+                aria-label="Browse folders"
+                className="shrink-0 md:hidden"
+                onClick={() => setMobileNavOpen(true)}
+              >
+                <PanelLeft />
+              </Button>
+              <div className="min-w-0">
+                {folderPath.length > 1 ? (
+                  <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                    {folderPath.map((part, index) => (
+                      <span
+                        key={`${part}-${index}`}
+                        className="inline-flex items-center gap-1"
+                      >
+                        {index > 0 ? <ChevronRight className="size-3" /> : null}
+                        {part}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="flex items-baseline gap-2">
+                  <h1 className="truncate font-display text-xl font-bold sm:text-2xl">
+                    {activeFolderId ? folderPath.at(-1) : "All scenes"}
+                  </h1>
+                  <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                    {visibleScenes.length}{" "}
+                    {visibleScenes.length === 1 ? "scene" : "scenes"}
                   </span>
-                ))}
-              </div>
-              <div className="flex items-baseline gap-2">
-                <h1 className="font-display text-2xl font-bold">
-                  {activeFolderId ? folderPath.at(-1) : "All scenes"}
-                </h1>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {visibleScenes.length}{" "}
-                  {visibleScenes.length === 1 ? "scene" : "scenes"}
-                </span>
+                </div>
               </div>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -211,11 +288,14 @@ function DashboardContent() {
                   </kbd>
                 )}
               </div>
-              <SortControl value={sort} onChange={setSort} />
-              <SceneDialog
-                folderId={activeFolderId}
-                onCreate={library.createScene}
-              />
+              <div className="flex items-center gap-2">
+                <SortControl value={sort} onChange={setSort} />
+                <SceneDialog
+                  folderId={activeFolderId}
+                  onCreate={library.createScene}
+                  className="flex-1 sm:flex-initial"
+                />
+              </div>
             </div>
           </header>
 

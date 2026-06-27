@@ -85,9 +85,7 @@ export async function parseJsonBody<S extends z.ZodType>(
   request: Request,
   schema: S,
   errorMessage: string,
-): Promise<
-  { ok: true; data: z.infer<S> } | { ok: false; response: Response }
-> {
+): Promise<{ ok: true; data: z.infer<S> } | { ok: false; response: Response }> {
   try {
     return { ok: true, data: schema.parse(await request.json()) };
   } catch (error) {

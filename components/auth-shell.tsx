@@ -70,12 +70,7 @@ export function AuthShell({
             </Link>
           </Button>
           <div className="flex items-center gap-1.5">
-            <Button
-              asChild
-              variant="ghost"
-              size="sm"
-              className="h-9 px-3.5"
-            >
+            <Button asChild variant="ghost" size="sm" className="h-9 px-3.5">
               <Link href="/docs">Docs</Link>
             </Button>
             <ThemeToggle />

@@ -58,7 +58,7 @@ export function FolderActions({ folderId }: { folderId: string }) {
             aria-label="Folder actions"
             size="icon-sm"
             variant="ghost"
-            className="opacity-60 group-hover:opacity-100"
+            className="opacity-100 group-hover:opacity-100 md:opacity-60"
             onClick={(event) => event.stopPropagation()}
           >
             <MoreHorizontal />
