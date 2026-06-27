@@ -161,6 +161,7 @@ export function createScene(
     ownerId: state.ownerId,
     title: parsed.title,
     folderId: parsed.folderId,
+    pinned: false,
     version: 0,
     currentObjectKey: null,
     thumbnailObjectKey: null,
@@ -199,6 +200,7 @@ export function updateScene(
             title: parsed.title ?? scene.title,
             folderId:
               parsed.folderId === undefined ? scene.folderId : parsed.folderId,
+            pinned: parsed.pinned === undefined ? scene.pinned : parsed.pinned,
             updatedAt: now,
           }
         : scene,
@@ -250,6 +252,7 @@ export function duplicateScene(
     ...source,
     id,
     title: `${source.title} copy`,
+    pinned: false,
     version: 0,
     currentObjectKey: null,
     thumbnailObjectKey: null,

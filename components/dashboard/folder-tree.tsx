@@ -5,6 +5,7 @@ import { Folder, FolderOpen } from "lucide-react";
 import { useLibrary } from "@/components/library-provider";
 import { Button } from "@/components/ui/button";
 
+import { FolderActions } from "./folder-actions";
 import { childFoldersOf } from "./utils";
 
 export function FolderTree({
@@ -28,24 +29,29 @@ export function FolderTree({
         const count = sceneCounts.get(folder.id) ?? 0;
         return (
           <div key={folder.id}>
-            <Button
-              className="w-full justify-start gap-2"
-              style={{ paddingLeft: `${10 + depth * 16}px` }}
-              variant={activeFolderId === folder.id ? "secondary" : "ghost"}
-              onClick={() => onSelect(folder.id)}
-            >
-              {activeFolderId === folder.id ? (
-                <FolderOpen className="text-primary" />
-              ) : (
-                <Folder />
-              )}
-              <span className="truncate">{folder.name}</span>
-              {count > 0 ? (
-                <span className="ml-auto font-mono text-xs text-muted-foreground">
-                  {count}
-                </span>
-              ) : null}
-            </Button>
+            <div className="group flex items-center gap-1 pr-1">
+              <Button
+                className="min-w-0 flex-1 justify-start gap-2"
+                style={{ paddingLeft: `${10 + depth * 16}px` }}
+                variant={activeFolderId === folder.id ? "secondary" : "ghost"}
+                onClick={() => onSelect(folder.id)}
+              >
+                {activeFolderId === folder.id ? (
+                  <FolderOpen className="text-primary" />
+                ) : (
+                  <Folder />
+                )}
+                <span className="truncate">{folder.name}</span>
+                {count > 0 ? (
+                  <span className="ml-auto font-mono text-xs text-muted-foreground">
+                    {count}
+                  </span>
+                ) : null}
+              </Button>
+              <div className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                <FolderActions folderId={folder.id} />
+              </div>
+            </div>
             <FolderTree
               parentFolderId={folder.id}
               activeFolderId={activeFolderId}

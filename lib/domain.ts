@@ -16,6 +16,8 @@ export const sceneMetadataSchema = z.object({
   ownerId: z.string().min(1),
   title: z.string().trim().min(1).max(120),
   folderId: nullableIdSchema,
+  // Defaults to false so docs/local state predating this field parse cleanly.
+  pinned: z.boolean().default(false),
   version: z.number().int().nonnegative(),
   currentObjectKey: z.string().min(1).nullable(),
   thumbnailObjectKey: z.string().min(1).nullable(),
@@ -71,6 +73,7 @@ export const updateSceneInputSchema = z.object({
   id: z.string().min(1),
   title: z.string().trim().min(1).max(120).optional(),
   folderId: nullableIdSchema.optional(),
+  pinned: z.boolean().optional(),
 });
 
 export const saveSceneBundleInputSchema = z.object({

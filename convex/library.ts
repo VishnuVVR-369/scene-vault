@@ -482,6 +482,7 @@ export const createScene = mutation({
       ownerId,
       title: input.title,
       folderId: args.folderId,
+      pinned: false,
       version: 0,
       currentObjectKey: null,
       thumbnailObjectKey: null,
@@ -499,6 +500,7 @@ export const updateScene = mutation({
     sceneId: v.id("scenes"),
     title: v.optional(v.string()),
     folderId: v.optional(v.union(v.id("folders"), v.null())),
+    pinned: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const ownerId = await requireOwnerId(ctx);
@@ -510,6 +512,7 @@ export const updateScene = mutation({
     await ctx.db.patch(args.sceneId, {
       ...(input.title === undefined ? {} : { title: input.title }),
       ...(args.folderId === undefined ? {} : { folderId: args.folderId }),
+      ...(input.pinned === undefined ? {} : { pinned: input.pinned }),
       updatedAt: Date.now(),
     });
   },

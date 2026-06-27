@@ -14,7 +14,8 @@ test("creates nested folders and searches by folder name", async ({ page }) => {
     .getByRole("button", { name: "Create folder" })
     .click();
 
-  await page.getByRole("button", { name: "Open folder Product" }).click();
+  // Folders are now navigated from the left sidebar tree, not the main view.
+  await page.getByRole("button", { name: "Product", exact: true }).click();
   await page.getByLabel("Create folder").click();
   await page.getByLabel("Name").fill("Flows");
   await page
@@ -22,7 +23,7 @@ test("creates nested folders and searches by folder name", async ({ page }) => {
     .getByRole("button", { name: "Create folder" })
     .click();
 
-  await page.getByRole("button", { name: "Open folder Flows" }).click();
+  await page.getByRole("button", { name: "Flows", exact: true }).click();
   await page.getByRole("button", { name: "New scene" }).first().click();
   await page.getByLabel("Title").fill("Checkout map");
   await page
@@ -36,6 +37,35 @@ test("creates nested folders and searches by folder name", async ({ page }) => {
 
   await expect(
     page.getByRole("link", { name: "Checkout map", exact: true }),
+  ).toBeVisible();
+});
+
+test("pins a scene into its own dashboard section", async ({ page }) => {
+  await page.getByRole("button", { name: "New scene" }).first().click();
+  await page.getByLabel("Title").fill("Pinned demo");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Create scene" })
+    .click();
+  await page.getByLabel("Back to library").click();
+
+  // No Pinned section until something is pinned.
+  await expect(
+    page.getByRole("heading", { name: "Pinned", exact: true }),
+  ).toBeHidden();
+
+  await page.getByRole("button", { name: "Scene actions" }).first().click();
+  await page.getByRole("menuitem", { name: "Pin" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Pinned", exact: true }),
+  ).toBeVisible();
+  // The sole scene moved to Pinned, so the "Scenes" section header is gone.
+  await expect(
+    page.getByRole("heading", { name: "Scenes", exact: true }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole("link", { name: "Pinned demo", exact: true }),
   ).toBeVisible();
 });
 

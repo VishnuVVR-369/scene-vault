@@ -25,18 +25,6 @@ export function sortScenes(scenes: SceneMetadata[], sort: SortKey) {
   }
 }
 
-const FOLDER_COLORS = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-];
-
-export function folderColor(index: number) {
-  return FOLDER_COLORS[index % FOLDER_COLORS.length];
-}
-
 // Direct children of a folder (or the roots when `parentFolderId` is null),
 // sorted by name — the ordering used by both the sidebar tree and folder cards.
 export function childFoldersOf(folders: Folder[], parentFolderId: string | null) {

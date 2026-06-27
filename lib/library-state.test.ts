@@ -10,6 +10,7 @@ import {
   getFolderPath,
   moveFolder,
   saveSceneBundle,
+  updateScene,
 } from "@/lib/library-state";
 
 describe("library state", () => {
@@ -118,6 +119,40 @@ describe("library state", () => {
       currentObjectKey: null,
       version: 0,
     });
+  });
+
+  it("creates scenes unpinned and toggles the pinned flag", () => {
+    let state = createInitialLibraryState("user_1");
+    state = createScene(
+      state,
+      { title: "Flow", folderId: null },
+      { id: "s1", now: 1 },
+    );
+    expect(state.scenes[0].pinned).toBe(false);
+
+    state = updateScene(state, { id: "s1", pinned: true }, 2);
+    expect(state.scenes[0].pinned).toBe(true);
+
+    // Editing other fields leaves the pin untouched.
+    state = updateScene(state, { id: "s1", title: "Flow v2" }, 3);
+    expect(state.scenes[0]).toMatchObject({ title: "Flow v2", pinned: true });
+
+    state = updateScene(state, { id: "s1", pinned: false }, 4);
+    expect(state.scenes[0].pinned).toBe(false);
+  });
+
+  it("resets the pinned flag on a duplicated scene", () => {
+    let state = createInitialLibraryState("user_1");
+    state = createScene(
+      state,
+      { title: "Flow", folderId: null },
+      { id: "s1", now: 1 },
+    );
+    state = updateScene(state, { id: "s1", pinned: true }, 2);
+
+    state = duplicateScene(state, "s1", { id: "s2", now: 3 });
+
+    expect(state.scenes.find((scene) => scene.id === "s2")?.pinned).toBe(false);
   });
 
   it("stores scene bundles without Excalidraw collaborators app state", () => {

@@ -74,7 +74,7 @@ type LibraryContextValue = {
   createScene: (title: string, folderId: string | null) => Promise<string>;
   updateScene: (
     sceneId: string,
-    patch: { title?: string; folderId?: string | null },
+    patch: { title?: string; folderId?: string | null; pinned?: boolean },
   ) => Promise<void>;
   deleteScene: (sceneId: string) => Promise<void>;
   duplicateScene: (sceneId: string) => Promise<string>;
@@ -125,7 +125,12 @@ const convexRefs = {
   >("library:createScene"),
   updateScene: makeFunctionReference<
     "mutation",
-    { sceneId: string; title?: string; folderId?: string | null },
+    {
+      sceneId: string;
+      title?: string;
+      folderId?: string | null;
+      pinned?: boolean;
+    },
     null
   >("library:updateScene"),
   deleteScene: makeFunctionReference<"mutation", { sceneId: string }, null>(
@@ -520,6 +525,7 @@ function RemoteLibraryProvider({ children }: { children: ReactNode }) {
           sceneId: input.id,
           title: input.title,
           folderId: input.folderId,
+          pinned: input.pinned,
         });
       },
       deleteScene: async (sceneId) => {

@@ -9,6 +9,8 @@
  */
 
 import type * as collab from "../collab.js";
+import type * as collabAuth from "../collabAuth.js";
+import type * as collabDb from "../collabDb.js";
 import type * as collabLogic from "../collabLogic.js";
 import type * as crons from "../crons.js";
 import type * as library from "../library.js";
@@ -23,6 +25,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   collab: typeof collab;
+  collabAuth: typeof collabAuth;
+  collabDb: typeof collabDb;
   collabLogic: typeof collabLogic;
   crons: typeof crons;
   library: typeof library;

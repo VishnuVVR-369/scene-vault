@@ -26,6 +26,7 @@ export const updateSceneArgsSchema = z.object({
   sceneId: z.string().min(1),
   title: z.string().trim().min(1).max(120).optional(),
   folderId: nullableIdSchema.optional(),
+  pinned: z.boolean().optional(),
 });
 
 export const idArgsSchema = z.object({

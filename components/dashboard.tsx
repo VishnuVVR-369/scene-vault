@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  ChevronRight,
-  Clock3,
-  FilePlus2,
-  Folder,
-  FolderOpen,
-  Search,
-  Sparkles,
-} from "lucide-react";
+import { ChevronRight, FilePlus2, Pin, Search, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
@@ -16,18 +8,11 @@ import { Wordmark } from "@/components/brand";
 import { AccountControls } from "@/components/dashboard/account-controls";
 import { FolderDialog, SceneDialog } from "@/components/dashboard/dialogs";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { FolderActions } from "@/components/dashboard/folder-actions";
 import { FolderTree } from "@/components/dashboard/folder-tree";
-import { SceneActions } from "@/components/dashboard/scene-actions";
+import { SceneCard } from "@/components/dashboard/scene-card";
 import { SortControl } from "@/components/dashboard/sort-control";
-import {
-  childFoldersOf,
-  folderColor,
-  sortScenes,
-  type SortKey,
-} from "@/components/dashboard/utils";
+import { sortScenes, type SortKey } from "@/components/dashboard/utils";
 import { LibraryProvider, useLibrary } from "@/components/library-provider";
-import { SceneThumbnail } from "@/components/scene-thumbnail";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,7 +20,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { filterScenes, getFolderPath } from "@/lib/library-state";
-import { formatRelativeTime } from "@/lib/relative-time";
 
 function DashboardContent() {
   const library = useLibrary();
@@ -98,9 +82,16 @@ function DashboardContent() {
   );
 
   const folderPath = getFolderPath(syntheticState, activeFolderId);
-  const childFolders = useMemo(
-    () => childFoldersOf(library.folders, activeFolderId),
-    [activeFolderId, library.folders],
+
+  // Pinned scenes break out into their own section above the rest, scoped to
+  // whatever the user is currently looking at (active folder + search).
+  const pinnedScenes = useMemo(
+    () => visibleScenes.filter((scene) => scene.pinned),
+    [visibleScenes],
+  );
+  const unpinnedScenes = useMemo(
+    () => visibleScenes.filter((scene) => !scene.pinned),
+    [visibleScenes],
   );
 
   if (!library.ready) {
@@ -114,9 +105,9 @@ function DashboardContent() {
           <Skeleton className="m-4 hidden h-[calc(100vh-6rem)] md:block" />
           <div className="space-y-4 p-4">
             <Skeleton className="h-10 w-full max-w-sm" />
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-44" />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-40" />
               ))}
             </div>
           </div>
@@ -229,116 +220,8 @@ function DashboardContent() {
           </header>
 
           <div className="space-y-8 p-4 sm:p-6">
-            <section>
-              <div className="mb-3 flex items-center gap-2">
-                <h2 className="text-sm font-semibold">Folders</h2>
-                <Badge variant="secondary" className="font-mono">
-                  {childFolders.length}
-                </Badge>
-              </div>
-              {childFolders.length ? (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {childFolders.map((folder, index) => {
-                    const count = sceneCounts.get(folder.id) ?? 0;
-                    return (
-                      <div
-                        key={folder.id}
-                        className="group flex h-16 items-center gap-3 rounded-2xl border-[1.5px] border-border bg-card px-3 transition-all hover:-translate-y-0.5 hover:border-foreground/60 hover:shadow-sketch-sm"
-                      >
-                        <button
-                          className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none"
-                          aria-label={`Open folder ${folder.name}`}
-                          onClick={() => setActiveFolderId(folder.id)}
-                        >
-                          <span
-                            className="flex size-9 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:-rotate-6"
-                            style={{
-                              backgroundColor: `color-mix(in oklch, ${folderColor(index)} 16%, transparent)`,
-                            }}
-                          >
-                            <Folder
-                              className="size-5"
-                              style={{ color: folderColor(index) }}
-                            />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">
-                              {folder.name}
-                            </span>
-                            <span className="block text-xs text-muted-foreground">
-                              {count} {count === 1 ? "scene" : "scenes"}
-                            </span>
-                          </span>
-                        </button>
-                        <FolderActions folderId={folder.id} />
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={<FolderOpen className="size-6" />}
-                  title="No folders here"
-                  hint="Folders keep related scenes together."
-                />
-              )}
-            </section>
-
-            <section>
-              <div className="mb-3 flex items-center gap-2">
-                <h2 className="text-sm font-semibold">Scenes</h2>
-                <Badge variant="secondary" className="font-mono">
-                  {visibleScenes.length}
-                </Badge>
-              </div>
-              {visibleScenes.length ? (
-                <div
-                  className={`grid gap-4 transition-opacity duration-200 sm:grid-cols-2 xl:grid-cols-3 ${
-                    isFiltering ? "opacity-60" : "opacity-100"
-                  }`}
-                >
-                  {visibleScenes.map((scene, index) => (
-                    <article
-                      key={scene.id}
-                      style={{
-                        animationDelay: `${Math.min(index, 12) * 30}ms`,
-                      }}
-                      className={`sketch-card animate-card-in group overflow-hidden bg-card transition-all duration-200 hover:-translate-y-1 ${
-                        index % 2 === 0 ? "hover:-rotate-1" : "hover:rotate-1"
-                      }`}
-                    >
-                      <Link
-                        className="bg-paper-dots block aspect-[16/10] border-b-[1.5px] border-border"
-                        href={`/scenes/${scene.id}`}
-                        aria-label={`Open ${scene.title}`}
-                      >
-                        <SceneThumbnail
-                          seed={scene.id}
-                          src={library.thumbnails[scene.id]}
-                          className="h-full w-full"
-                        />
-                      </Link>
-                      <div className="flex items-start justify-between gap-3 p-3">
-                        <div className="min-w-0">
-                          <Link
-                            href={`/scenes/${scene.id}`}
-                            className="block truncate font-medium hover:text-primary"
-                          >
-                            {scene.title}
-                          </Link>
-                          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                            <Clock3 className="size-3" />
-                            {scene.lastSavedAt
-                              ? `Edited ${formatRelativeTime(scene.lastSavedAt)}`
-                              : "Not saved yet"}
-                          </p>
-                        </div>
-                        <SceneActions sceneId={scene.id} />
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : query ? (
+            {visibleScenes.length === 0 ? (
+              query ? (
                 <EmptyState
                   icon={<Search className="size-6" />}
                   title="Nothing matches that search"
@@ -356,8 +239,61 @@ function DashboardContent() {
                     />
                   }
                 />
-              )}
-            </section>
+              )
+            ) : (
+              <>
+                {pinnedScenes.length ? (
+                  <section>
+                    <div className="mb-3 flex items-center gap-2">
+                      <Pin className="size-4 text-primary" />
+                      <h2 className="text-sm font-semibold">Pinned</h2>
+                      <Badge variant="secondary" className="font-mono">
+                        {pinnedScenes.length}
+                      </Badge>
+                    </div>
+                    <div
+                      className={`grid gap-3 transition-opacity duration-200 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${
+                        isFiltering ? "opacity-60" : "opacity-100"
+                      }`}
+                    >
+                      {pinnedScenes.map((scene, index) => (
+                        <SceneCard
+                          key={scene.id}
+                          scene={scene}
+                          index={index}
+                          thumbnailSrc={library.thumbnails[scene.id]}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {unpinnedScenes.length ? (
+                  <section>
+                    <div className="mb-3 flex items-center gap-2">
+                      <h2 className="text-sm font-semibold">Scenes</h2>
+                      <Badge variant="secondary" className="font-mono">
+                        {unpinnedScenes.length}
+                      </Badge>
+                    </div>
+                    <div
+                      className={`grid gap-3 transition-opacity duration-200 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${
+                        isFiltering ? "opacity-60" : "opacity-100"
+                      }`}
+                    >
+                      {unpinnedScenes.map((scene, index) => (
+                        <SceneCard
+                          key={scene.id}
+                          scene={scene}
+                          index={index}
+                          thumbnailSrc={library.thumbnails[scene.id]}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </>
+            )}
           </div>
         </section>
       </main>

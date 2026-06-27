@@ -16,6 +16,9 @@ export default defineSchema({
     ownerId: v.string(),
     title: v.string(),
     folderId: v.union(v.id("folders"), v.null()),
+    // Pinned scenes surface in a dedicated dashboard section. Optional so rows
+    // created before this field still validate (treated as unpinned).
+    pinned: v.optional(v.boolean()),
     version: v.number(),
     currentObjectKey: v.union(v.string(), v.null()),
     thumbnailObjectKey: v.union(v.string(), v.null()),

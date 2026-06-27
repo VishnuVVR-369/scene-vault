@@ -1,6 +1,14 @@
 "use client";
 
-import { Copy, Loader2, MoreHorizontal, Share2, Trash2 } from "lucide-react";
+import {
+  Copy,
+  Loader2,
+  MoreHorizontal,
+  Pin,
+  PinOff,
+  Share2,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 
 import { useLibrary } from "@/components/library-provider";
@@ -25,13 +33,35 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/toast";
 
-export function SceneActions({ sceneId }: { sceneId: string }) {
+export function SceneActions({
+  sceneId,
+  pinned,
+}: {
+  sceneId: string;
+  pinned: boolean;
+}) {
   const library = useLibrary();
   const toast = useToast();
   const [shareOpen, setShareOpen] = useState(false);
   // Duplicating can be slow in remote mode (download, copy, re-upload), so we
   // surface a spinner on the trigger and a toast on completion.
   const [busy, setBusy] = useState(false);
+
+  async function togglePin() {
+    try {
+      await library.updateScene(sceneId, { pinned: !pinned });
+      toast({
+        variant: "success",
+        title: pinned ? "Scene unpinned" : "Scene pinned",
+      });
+    } catch {
+      toast({
+        variant: "error",
+        title: pinned ? "Couldn't unpin scene" : "Couldn't pin scene",
+        description: "Please try again.",
+      });
+    }
+  }
 
   async function duplicate() {
     setBusy(true);
@@ -77,6 +107,10 @@ export function SceneActions({ sceneId }: { sceneId: string }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => void togglePin()}>
+            {pinned ? <PinOff /> : <Pin />}
+            {pinned ? "Unpin" : "Pin"}
+          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={(event) => {
               event.preventDefault();
