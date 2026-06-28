@@ -19,6 +19,10 @@ import {
   snapshotToSceneBundle,
 } from "@/lib/excalidraw-scene";
 
+import {
+  AiDiagramDialog,
+  type GeneratedAiDiagram,
+} from "@/components/ai-diagram-dialog";
 import { LogoMark } from "@/components/brand";
 import { CollaborativeCanvas } from "@/components/collab/collaborative-canvas";
 import { RoomControls } from "@/components/collab/room-controls";
@@ -49,7 +53,109 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MAX_ELEMENTS_PER_SCENE } from "@/convex/collabLogic";
 import { cn } from "@/lib/utils";
 import { type SceneBundle } from "@/lib/domain";
-import type { BinaryFileData } from "@excalidraw/excalidraw/types";
+import type {
+  BinaryFileData,
+  ExcalidrawImperativeAPI,
+} from "@excalidraw/excalidraw/types";
+
+type ElementBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+function getElementBounds(elements: unknown[]): ElementBounds | null {
+  let bounds: ElementBounds | null = null;
+
+  for (const element of elements) {
+    if (
+      !element ||
+      typeof element !== "object" ||
+      ("isDeleted" in element && element.isDeleted === true)
+    ) {
+      continue;
+    }
+
+    const candidate = element as {
+      x?: unknown;
+      y?: unknown;
+      width?: unknown;
+      height?: unknown;
+    };
+    if (
+      typeof candidate.x !== "number" ||
+      typeof candidate.y !== "number" ||
+      typeof candidate.width !== "number" ||
+      typeof candidate.height !== "number"
+    ) {
+      continue;
+    }
+
+    const minX = candidate.x;
+    const minY = candidate.y;
+    const maxX = candidate.x + candidate.width;
+    const maxY = candidate.y + candidate.height;
+    bounds = bounds
+      ? {
+          minX: Math.min(bounds.minX, minX),
+          minY: Math.min(bounds.minY, minY),
+          maxX: Math.max(bounds.maxX, maxX),
+          maxY: Math.max(bounds.maxY, maxY),
+        }
+      : { minX, minY, maxX, maxY };
+  }
+
+  return bounds;
+}
+
+function translateElements(elements: unknown[], dx: number, dy: number) {
+  return elements.map((element) => {
+    if (!element || typeof element !== "object") {
+      return element;
+    }
+    const candidate = element as { x?: unknown; y?: unknown };
+    if (typeof candidate.x !== "number" || typeof candidate.y !== "number") {
+      return element;
+    }
+    return {
+      ...element,
+      x: candidate.x + dx,
+      y: candidate.y + dy,
+    };
+  });
+}
+
+function appendDiagramToBundle(
+  currentBundle: SceneBundle,
+  diagramBundle: SceneBundle,
+) {
+  const current = normalizeSceneBundle(currentBundle);
+  const diagram = normalizeSceneBundle(diagramBundle);
+  const currentBounds = getElementBounds(current.elements);
+  const diagramBounds = getElementBounds(diagram.elements);
+  const dx =
+    currentBounds && diagramBounds
+      ? currentBounds.maxX + 240 - diagramBounds.minX
+      : 0;
+  const dy =
+    currentBounds && diagramBounds
+      ? currentBounds.minY - diagramBounds.minY
+      : 0;
+  const insertedElements = translateElements(diagram.elements, dx, dy);
+
+  return {
+    bundle: normalizeSceneBundle({
+      ...current,
+      elements: [...current.elements, ...insertedElements],
+      files: {
+        ...current.files,
+        ...diagram.files,
+      },
+    }),
+    insertedElements,
+  };
+}
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -103,6 +209,8 @@ function EditorContent({ sceneId }: { sceneId: string }) {
   } | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveState>("idle");
   const [shareOpen, setShareOpen] = useState(false);
+  const [canvasReady, setCanvasReady] = useState(false);
+  const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
 
   // `library` is a fresh object on every Convex update (and every save triggers
   // one), so depending on its identity would re-download the bundle and
@@ -161,6 +269,11 @@ function EditorContent({ sceneId }: { sceneId: string }) {
     [sceneId],
   );
 
+  const handleCanvasApi = useCallback((api: ExcalidrawImperativeAPI) => {
+    excalidrawApiRef.current = api;
+    setCanvasReady(true);
+  }, []);
+
   if (!library.ready) {
     return (
       <main className="flex h-screen flex-col">
@@ -192,7 +305,7 @@ function EditorContent({ sceneId }: { sceneId: string }) {
     );
   }
 
-  async function save(nextBundle: SceneBundle) {
+  async function save(nextBundle: SceneBundle): Promise<SaveState> {
     const sceneBundle = normalizeSceneBundle(nextBundle);
     setBundle(sceneBundle);
     setSaveStatus("saving");
@@ -203,8 +316,51 @@ function EditorContent({ sceneId }: { sceneId: string }) {
         hash: await sha256Hex(JSON.stringify(sceneBundle)),
       });
       setSaveStatus("saved");
+      return "saved";
     } catch {
       setSaveStatus("error");
+      return "error";
+    }
+  }
+
+  async function insertAiDiagram(diagram: GeneratedAiDiagram) {
+    const api = excalidrawApiRef.current;
+    if (!api || !bundle) {
+      throw new Error("Canvas is not ready yet.");
+    }
+
+    const currentBundle = normalizeSceneBundle({
+      ...bundle,
+      elements: [...api.getSceneElementsIncludingDeleted()],
+      appState: api.getAppState(),
+      files: api.getFiles(),
+    });
+    const { bundle: nextBundle, insertedElements } = appendDiagramToBundle(
+      currentBundle,
+      diagram.bundle,
+    );
+    setSaveStatus("saving");
+
+    try {
+      await library.saveSceneBundle(sceneId, nextBundle);
+      setBundle(nextBundle);
+      setSavedContentHash({
+        sceneId,
+        hash: await sha256Hex(JSON.stringify(nextBundle)),
+      });
+      setSaveStatus("saved");
+      api.updateScene({
+        elements: nextBundle.elements as never,
+        appState: nextBundle.appState as never,
+        captureUpdate: "IMMEDIATELY",
+      });
+      api.scrollToContent(insertedElements as never, {
+        fitToContent: true,
+        viewportZoomFactor: 0.8,
+      });
+    } catch {
+      setSaveStatus("error");
+      throw new Error("Could not save the AI diagram into this scene.");
     }
   }
 
@@ -238,6 +394,13 @@ function EditorContent({ sceneId }: { sceneId: string }) {
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           {joinedRoom ? null : <SaveStatus state={saveStatus} />}
+          {joinedRoom ? null : (
+            <AiDiagramDialog
+              disabled={!canvasReady || !bundle}
+              onDiagramReady={insertAiDiagram}
+              successTitle="AI diagram added"
+            />
+          )}
           {canUseLive ? (
             <RoomControls
               sceneId={sceneId}
@@ -312,6 +475,7 @@ function EditorContent({ sceneId }: { sceneId: string }) {
           ) : (
             <ExcalidrawCanvas
               initialBundle={bundle}
+              onApi={handleCanvasApi}
               onBundleDraftChange={setBundle}
               onBundleChange={save}
               theme={resolvedTheme}

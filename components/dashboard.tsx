@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { Wordmark } from "@/components/brand";
+import { AiDiagramDialog } from "@/components/ai-diagram-dialog";
 import { AccountControls } from "@/components/dashboard/account-controls";
 import { FolderDialog, SceneDialog } from "@/components/dashboard/dialogs";
 import { EmptyState } from "@/components/dashboard/empty-state";
@@ -290,6 +291,10 @@ function DashboardContent() {
               </div>
               <div className="flex items-center gap-2">
                 <SortControl value={sort} onChange={setSort} />
+                <AiDiagramDialog
+                  folderId={activeFolderId}
+                  className="flex-1 sm:flex-initial"
+                />
                 <SceneDialog
                   folderId={activeFolderId}
                   onCreate={library.createScene}
@@ -313,10 +318,13 @@ function DashboardContent() {
                   title="A blank canvas awaits"
                   hint="Create your first scene and start drawing."
                   action={
-                    <SceneDialog
-                      folderId={activeFolderId}
-                      onCreate={library.createScene}
-                    />
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <AiDiagramDialog folderId={activeFolderId} />
+                      <SceneDialog
+                        folderId={activeFolderId}
+                        onCreate={library.createScene}
+                      />
+                    </div>
                   }
                 />
               )

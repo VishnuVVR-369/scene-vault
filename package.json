@@ -19,6 +19,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1073.0",
     "@clerk/nextjs": "^7.5.7",
     "@excalidraw/excalidraw": "^0.18.1",
+    "@excalidraw/mermaid-to-excalidraw": "2.2.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.41.0",

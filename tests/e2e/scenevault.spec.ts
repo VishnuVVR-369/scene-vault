@@ -69,6 +69,122 @@ test("pins a scene into its own dashboard section", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("creates an AI-generated diagram scene", async ({ page }) => {
+  await page.route("**/api/ai/diagram", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        title: "AI checkout flow",
+        mermaid: [
+          "flowchart TD",
+          "  subgraph Checkout[Checkout]",
+          "    Cart[Cart] --> Payment[Payment authorization]",
+          "  end",
+          "  Payment --> Receipt[Receipt]",
+        ].join("\n"),
+      }),
+    });
+  });
+
+  await page.getByRole("button", { name: "AI diagram" }).first().click();
+  await page
+    .getByLabel("Prompt")
+    .fill("Show checkout to payment authorization to receipt.");
+  await page.getByRole("button", { name: "Generate diagram" }).click();
+
+  await expect(page.getByLabel("Scene title")).toHaveValue("AI checkout flow", {
+    timeout: 10_000,
+  });
+  await expect(page.getByText("Saved")).toBeVisible({ timeout: 10_000 });
+});
+
+test("adds an AI-generated diagram to an existing scene", async ({ page }) => {
+  await page.route("**/api/ai/diagram", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        title: "AI checkout flow",
+        mermaid: [
+          "flowchart TD",
+          "  subgraph Checkout[Checkout]",
+          "    Cart[Cart] --> Payment[Payment authorization]",
+          "  end",
+          "  Payment --> Receipt[Receipt]",
+        ].join("\n"),
+      }),
+    });
+  });
+
+  await page.getByRole("button", { name: "New scene" }).first().click();
+  await page.getByLabel("Title").fill("Mixed scene");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Create scene" })
+    .click();
+  await page.getByTestId("e2e-add-shape").click();
+  await expect(page.getByText("Saved")).toBeVisible({ timeout: 5000 });
+
+  const readSavedElementCount = () =>
+    page.evaluate(() => {
+      const raw = window.localStorage.getItem("scenevault.library.v1");
+      if (!raw) {
+        return 0;
+      }
+      const state = JSON.parse(raw) as {
+        scenes?: Array<{ id: string; title: string }>;
+        bundles?: Record<string, { elements?: Array<{ isDeleted?: boolean }> }>;
+      };
+      const scene = state.scenes?.find(
+        (candidate) => candidate.title === "Mixed scene",
+      );
+      if (!scene) {
+        return 0;
+      }
+      return (
+        state.bundles?.[scene.id]?.elements?.filter(
+          (element) => !element.isDeleted,
+        ).length ?? 0
+      );
+    });
+
+  await expect.poll(readSavedElementCount).toBeGreaterThan(0);
+  const elementCountBefore = await readSavedElementCount();
+  expect(elementCountBefore).toBeGreaterThan(0);
+
+  const canvasElementCountBefore = await page.evaluate(() => {
+    return (
+      (
+        window as unknown as {
+          __excalidrawApi?: { getSceneElements: () => unknown[] };
+        }
+      ).__excalidrawApi?.getSceneElements().length ?? 0
+    );
+  });
+
+  await page.getByRole("button", { name: "AI diagram" }).click();
+  await page
+    .getByLabel("Prompt")
+    .fill("Add a checkout flow beside the current drawing.");
+  await page.getByRole("button", { name: "Generate diagram" }).click();
+
+  await expect(page.getByLabel("Scene title")).toHaveValue("Mixed scene");
+  await expect.poll(readSavedElementCount).toBeGreaterThan(elementCountBefore);
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        return (
+          (
+            window as unknown as {
+              __excalidrawApi?: { getSceneElements: () => unknown[] };
+            }
+          ).__excalidrawApi?.getSceneElements().length ?? 0
+        );
+      });
+    })
+    .toBeGreaterThan(canvasElementCountBefore);
+  await expect(page.getByText("Saved")).toBeVisible({ timeout: 10_000 });
+});
+
 test("edits and autosaves a scene bundle", async ({ page }) => {
   await page.getByRole("button", { name: "New scene" }).first().click();
   await page.getByLabel("Title").fill("System sketch");
