@@ -5,7 +5,7 @@ import { z, ZodError } from "zod";
 import { getConvexAuthToken } from "@/lib/auth-server";
 
 type SceneStorageAccess = {
-  storageOwnerId: string;
+  storageProfileId: string;
   currentObjectKey: string | null;
   thumbnailObjectKey: string | null;
 };
@@ -53,7 +53,7 @@ export async function requireSceneStorageAccess(
         response: Response.json({ error: "Scene not found" }, { status: 404 }),
       };
     }
-    return { ok: true, userId: access.storageOwnerId, access };
+    return { ok: true, userId: access.storageProfileId, access };
   } catch {
     return {
       ok: false,

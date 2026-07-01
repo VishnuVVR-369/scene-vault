@@ -4,7 +4,7 @@ export const nullableIdSchema = z.string().min(1).nullable();
 
 export const folderSchema = z.object({
   id: z.string().min(1),
-  ownerId: z.string().min(1),
+  profileId: z.string().min(1),
   name: z.string().trim().min(1).max(80),
   parentFolderId: nullableIdSchema,
   createdAt: z.number().int().nonnegative(),
@@ -13,7 +13,7 @@ export const folderSchema = z.object({
 
 export const sceneMetadataSchema = z.object({
   id: z.string().min(1),
-  ownerId: z.string().min(1),
+  profileId: z.string().min(1),
   title: z.string().trim().min(1).max(120),
   folderId: nullableIdSchema,
   // Defaults to false so docs/local state predating this field parse cleanly.
@@ -40,7 +40,7 @@ export const sceneBundleSchema = z.object({
 });
 
 export const libraryStateSchema = z.object({
-  ownerId: z.string().min(1),
+  profileId: z.string().min(1),
   folders: z.array(folderSchema),
   scenes: z.array(sceneMetadataSchema),
   bundles: z.record(z.string(), sceneBundleSchema),

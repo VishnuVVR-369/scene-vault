@@ -20,7 +20,7 @@ export async function POST(_request: Request, ctx: ShareRouteContext) {
     return authResult.response;
   }
   const target = await createSceneThumbnailUploadUrl({
-    ownerId: authResult.access.storageOwnerId,
+    profileId: authResult.access.storageProfileId,
     sceneId: authResult.access.sceneId,
   });
   return Response.json(target, {

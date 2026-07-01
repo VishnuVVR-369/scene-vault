@@ -8,7 +8,7 @@ export type SharedSceneMode = "view" | "edit";
 
 export type SharedSceneAccess = {
   sceneId: string;
-  storageOwnerId: string;
+  storageProfileId: string;
   mode: SharedSceneMode;
   title: string;
   version: number;

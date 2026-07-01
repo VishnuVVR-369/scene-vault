@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildSceneObjectKey,
   buildSceneThumbnailObjectKey,
-  isSceneObjectKeyForOwner,
-  isSceneThumbnailObjectKeyForOwner,
+  isSceneObjectKeyForProfile,
+  isSceneThumbnailObjectKeyForProfile,
 } from "@/lib/r2";
 
 describe("R2 object keys", () => {
@@ -20,34 +20,34 @@ describe("R2 object keys", () => {
     );
   });
 
-  it("validates object keys against the exact owner and scene", () => {
+  it("validates object keys against the exact profile and scene", () => {
     expect(
-      isSceneObjectKeyForOwner({
-        ownerId: "user_123",
+      isSceneObjectKeyForProfile({
+        profileId: "user_123",
         sceneId: "scene_456",
         key: "users/user_123/scenes/scene_456/head/excalidraw.json",
       }),
     ).toBe(true);
     expect(
-      isSceneObjectKeyForOwner({
-        ownerId: "user_123",
+      isSceneObjectKeyForProfile({
+        profileId: "user_123",
         sceneId: "scene_456",
         key: "users/user_999/scenes/scene_456/head/excalidraw.json",
       }),
     ).toBe(false);
   });
 
-  it("validates thumbnail keys against the exact owner and scene", () => {
+  it("validates thumbnail keys against the exact profile and scene", () => {
     expect(
-      isSceneThumbnailObjectKeyForOwner({
-        ownerId: "user_123",
+      isSceneThumbnailObjectKeyForProfile({
+        profileId: "user_123",
         sceneId: "scene_456",
         key: "users/user_123/scenes/scene_456/head/thumbnail.png",
       }),
     ).toBe(true);
     expect(
-      isSceneThumbnailObjectKeyForOwner({
-        ownerId: "user_123",
+      isSceneThumbnailObjectKeyForProfile({
+        profileId: "user_123",
         sceneId: "scene_456",
         key: "users/user_123/scenes/scene_789/head/thumbnail.png",
       }),

@@ -125,7 +125,7 @@ function DashboardContent() {
 
   const syntheticState = useMemo(
     () => ({
-      ownerId: "ui",
+      profileId: "ui",
       folders: library.folders,
       scenes: library.scenes,
       bundles: {},

@@ -6,34 +6,27 @@ import { tables as betterAuthTables } from "./betterAuth/schema";
 export default defineSchema({
   ...betterAuthTables,
 
-  userOwnerAliases: defineTable({
-    authUserId: v.string(),
-    ownerId: v.string(),
-    source: v.union(v.literal("legacy-clerk"), v.literal("manual")),
+  profiles: defineTable({
+    authSubject: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  })
-    .index("by_auth_user", ["authUserId"])
-    .index("by_owner", ["ownerId"])
-    .index("by_pair", ["authUserId", "ownerId"]),
+  }).index("by_auth_subject", ["authSubject"]),
 
   folders: defineTable({
-    ownerId: v.string(),
+    profileId: v.id("profiles"),
     name: v.string(),
     parentFolderId: v.union(v.id("folders"), v.null()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_owner_parent", ["ownerId", "parentFolderId"])
-    .index("by_owner", ["ownerId"]),
+    .index("by_profile_parent", ["profileId", "parentFolderId"])
+    .index("by_profile", ["profileId"]),
 
   scenes: defineTable({
-    ownerId: v.string(),
+    profileId: v.id("profiles"),
     title: v.string(),
     folderId: v.union(v.id("folders"), v.null()),
-    // Pinned scenes surface in a dedicated dashboard section. Optional so rows
-    // created before this field still validate (treated as unpinned).
-    pinned: v.optional(v.boolean()),
+    pinned: v.boolean(),
     version: v.number(),
     currentObjectKey: v.union(v.string(), v.null()),
     thumbnailObjectKey: v.union(v.string(), v.null()),
@@ -43,12 +36,12 @@ export default defineSchema({
     updatedAt: v.number(),
     lastSavedAt: v.union(v.number(), v.null()),
   })
-    .index("by_owner_folder", ["ownerId", "folderId"])
-    .index("by_owner_updated", ["ownerId", "updatedAt"]),
+    .index("by_profile_folder", ["profileId", "folderId"])
+    .index("by_profile_updated", ["profileId", "updatedAt"]),
 
   sceneShares: defineTable({
     sceneId: v.id("scenes"),
-    ownerId: v.string(),
+    profileId: v.id("profiles"),
     mode: v.union(v.literal("view"), v.literal("edit")),
     token: v.string(),
     enabled: v.boolean(),
@@ -57,7 +50,7 @@ export default defineSchema({
   })
     .index("by_token", ["token"])
     .index("by_scene_mode", ["sceneId", "mode"])
-    .index("by_owner", ["ownerId"]),
+    .index("by_profile", ["profileId"]),
 
   // One active live collaboration room per scene. Created only when the owner
   // explicitly starts live editing. `epoch` is bumped to force every member to
@@ -66,7 +59,7 @@ export default defineSchema({
   // back to R2 — so a browser crash can never lose edits (they live in Convex).
   liveRooms: defineTable({
     sceneId: v.id("scenes"),
-    ownerId: v.string(),
+    profileId: v.id("profiles"),
     // "empty"      — no durable scene yet, ready to edit from scratch
     // "needsHydration" — has a durable R2 snapshot that must seed the room
     // "hydrating"  — a joiner has claimed seeding the room from R2
@@ -79,7 +72,7 @@ export default defineSchema({
     ),
     hydratingSessionId: v.union(v.string(), v.null()),
     hydratingStartedAt: v.union(v.number(), v.null()),
-    startedByUserId: v.optional(v.union(v.string(), v.null())),
+    startedByUserId: v.optional(v.union(v.id("profiles"), v.null())),
     startedAt: v.optional(v.number()),
     stoppedAt: v.optional(v.union(v.number(), v.null())),
     epoch: v.number(),
@@ -114,7 +107,7 @@ export default defineSchema({
     sceneId: v.id("scenes"),
     roomSessionId: v.string(),
     sessionSecretHash: v.string(),
-    userId: v.union(v.string(), v.null()),
+    userId: v.union(v.id("profiles"), v.null()),
     createdAt: v.number(),
   })
     .index("by_scene", ["sceneId"])
@@ -125,7 +118,7 @@ export default defineSchema({
   presence: defineTable({
     sceneId: v.id("scenes"),
     roomSessionId: v.string(),
-    userId: v.union(v.string(), v.null()),
+    userId: v.union(v.id("profiles"), v.null()),
     name: v.string(),
     color: v.string(),
     cursorX: v.union(v.number(), v.null()),

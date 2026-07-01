@@ -22,8 +22,7 @@ import {
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
-async function requireOwnerId(ctx: {
-  db: DatabaseReader;
+async function requireAuthSubject(ctx: {
   auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
 }) {
   const identity = await ctx.auth.getUserIdentity();
@@ -33,23 +32,47 @@ async function requireOwnerId(ctx: {
   return identity.subject;
 }
 
-async function requireOwnerContext(ctx: {
+async function getCurrentProfileId(ctx: {
   db: DatabaseReader;
   auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
 }) {
-  const primaryOwnerId = await requireOwnerId(ctx);
-  const aliases = await ctx.db
-    .query("userOwnerAliases")
-    .withIndex("by_auth_user", (q) => q.eq("authUserId", primaryOwnerId))
-    .collect();
-  const ownerIds = Array.from(
-    new Set([primaryOwnerId, ...aliases.map((alias) => alias.ownerId)]),
-  );
-  return { primaryOwnerId, ownerIds };
+  const authSubject = await requireAuthSubject(ctx);
+  const profile = await ctx.db
+    .query("profiles")
+    .withIndex("by_auth_subject", (q) => q.eq("authSubject", authSubject))
+    .unique();
+  return profile?._id ?? null;
 }
 
-function owns(ownerIds: string[], ownerId: string) {
-  return ownerIds.includes(ownerId);
+async function requireCurrentProfileId(ctx: {
+  db: DatabaseReader;
+  auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
+}) {
+  const profileId = await getCurrentProfileId(ctx);
+  if (!profileId) {
+    throw new Error("Profile not found");
+  }
+  return profileId;
+}
+
+async function ensureCurrentProfileId(ctx: {
+  db: DatabaseWriter;
+  auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
+}) {
+  const authSubject = await requireAuthSubject(ctx);
+  const existing = await ctx.db
+    .query("profiles")
+    .withIndex("by_auth_subject", (q) => q.eq("authSubject", authSubject))
+    .unique();
+  if (existing) {
+    return existing._id;
+  }
+  const now = Date.now();
+  return await ctx.db.insert("profiles", {
+    authSubject,
+    createdAt: now,
+    updatedAt: now,
+  });
 }
 
 // Fetch a scene the caller owns, or throw. Ownership failures are reported as
@@ -57,10 +80,10 @@ function owns(ownerIds: string[], ownerId: string) {
 async function requireOwnedScene(
   db: DatabaseReader,
   sceneId: Id<"scenes">,
-  ownerIds: string[],
+  profileId: Id<"profiles">,
 ) {
   const scene = await db.get(sceneId);
-  if (!scene || !owns(ownerIds, scene.ownerId)) {
+  if (!scene || scene.profileId !== profileId) {
     throw new Error("Scene not found");
   }
   return scene;
@@ -72,61 +95,58 @@ async function requireOwnedScene(
 async function requireOwnedFolder(
   db: DatabaseReader,
   folderId: Id<"folders">,
-  ownerIds: string[],
+  profileId: Id<"profiles">,
   errorMessage = "Folder not found",
 ) {
   const folder = await db.get(folderId);
-  if (!folder || !owns(ownerIds, folder.ownerId)) {
+  if (!folder || folder.profileId !== profileId) {
     throw new Error(errorMessage);
   }
   return folder;
 }
 
-async function collectFoldersForOwnerIds(db: DatabaseReader, ownerIds: string[]) {
-  const folders = await Promise.all(
-    ownerIds.map((ownerId) =>
-      db
-        .query("folders")
-        .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
-        .collect(),
-    ),
-  );
-  return folders.flat();
+async function collectFoldersForProfile(
+  db: DatabaseReader,
+  profileId: Id<"profiles">,
+) {
+  return await db
+    .query("folders")
+    .withIndex("by_profile", (q) => q.eq("profileId", profileId))
+    .collect();
 }
 
-async function collectScenesForOwnerIds(db: DatabaseReader, ownerIds: string[]) {
-  const scenes = await Promise.all(
-    ownerIds.map((ownerId) =>
-      db
-        .query("scenes")
-        .withIndex("by_owner_updated", (q) => q.eq("ownerId", ownerId))
-        .collect(),
-    ),
-  );
-  return scenes.flat();
+async function collectScenesForProfile(
+  db: DatabaseReader,
+  profileId: Id<"profiles">,
+) {
+  return await db
+    .query("scenes")
+    .withIndex("by_profile_updated", (q) => q.eq("profileId", profileId))
+    .collect();
 }
 
-function buildSceneObjectKey(ownerId: string, sceneId: string) {
-  return `users/${encodeURIComponent(ownerId)}/scenes/${encodeURIComponent(sceneId)}/head/excalidraw.json`;
+function buildSceneObjectKey(profileId: string, sceneId: string) {
+  return `users/${encodeURIComponent(profileId)}/scenes/${encodeURIComponent(sceneId)}/head/excalidraw.json`;
 }
 
-function buildSceneThumbnailObjectKey(ownerId: string, sceneId: string) {
-  return `users/${encodeURIComponent(ownerId)}/scenes/${encodeURIComponent(sceneId)}/head/thumbnail.png`;
+function buildSceneThumbnailObjectKey(profileId: string, sceneId: string) {
+  return `users/${encodeURIComponent(profileId)}/scenes/${encodeURIComponent(sceneId)}/head/thumbnail.png`;
 }
 
 // The client uploads to a key it computes; reject anything that doesn't match
 // the canonical owner/scene key so a save can't write outside its own slot.
 function assertValidSceneObjectKeys(
-  ownerId: string,
+  profileId: Id<"profiles">,
   sceneId: Id<"scenes">,
   input: { objectKey: string; thumbnailObjectKey?: string | null },
 ) {
-  if (input.objectKey !== buildSceneObjectKey(ownerId, sceneId)) {
+  if (input.objectKey !== buildSceneObjectKey(profileId, sceneId)) {
     throw new Error("Invalid scene object key");
   }
   if (
     input.thumbnailObjectKey &&
-    input.thumbnailObjectKey !== buildSceneThumbnailObjectKey(ownerId, sceneId)
+    input.thumbnailObjectKey !==
+      buildSceneThumbnailObjectKey(profileId, sceneId)
   ) {
     throw new Error("Invalid scene thumbnail object key");
   }
@@ -210,7 +230,7 @@ async function getShareSceneByToken(db: DatabaseReader, token: string) {
     return null;
   }
   const scene = await db.get(share.sceneId);
-  if (!scene || scene.ownerId !== share.ownerId) {
+  if (!scene || scene.profileId !== share.profileId) {
     return null;
   }
   return { share, scene };
@@ -219,10 +239,13 @@ async function getShareSceneByToken(db: DatabaseReader, token: string) {
 export const getLibrary = query({
   args: {},
   handler: async (ctx) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await getCurrentProfileId(ctx);
+    if (!profileId) {
+      return { folders: [], scenes: [] };
+    }
     const [folders, scenes] = await Promise.all([
-      collectFoldersForOwnerIds(ctx.db, ownerIds),
-      collectScenesForOwnerIds(ctx.db, ownerIds),
+      collectFoldersForProfile(ctx.db, profileId),
+      collectScenesForProfile(ctx.db, profileId),
     ]);
     return { folders, scenes };
   },
@@ -231,13 +254,16 @@ export const getLibrary = query({
 export const getSceneStorageAccess = query({
   args: { sceneId: v.id("scenes") },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await getCurrentProfileId(ctx);
+    if (!profileId) {
+      return null;
+    }
     const scene = await ctx.db.get(args.sceneId);
-    if (!scene || !owns(ownerIds, scene.ownerId)) {
+    if (!scene || scene.profileId !== profileId) {
       return null;
     }
     return {
-      storageOwnerId: scene.ownerId,
+      storageProfileId: scene.profileId,
       currentObjectKey: scene.currentObjectKey,
       thumbnailObjectKey: scene.thumbnailObjectKey,
     };
@@ -247,9 +273,9 @@ export const getSceneStorageAccess = query({
 export const getSharesForScene = query({
   args: { sceneId: v.id("scenes") },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     sceneShareArgsSchema.parse({ sceneId: args.sceneId, mode: "view" });
-    await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
+    await requireOwnedScene(ctx.db, args.sceneId, profileId);
     const [viewShare, editShare] = await Promise.all([
       ctx.db
         .query("sceneShares")
@@ -283,43 +309,10 @@ export const getSharesForScene = query({
   },
 });
 
-export const getCurrentStorageOwnerId = query({
+export const getCurrentStorageProfileId = query({
   args: {},
   handler: async (ctx) => {
-    const { primaryOwnerId } = await requireOwnerContext(ctx);
-    return primaryOwnerId;
-  },
-});
-
-export const linkLegacyOwner = mutation({
-  args: {
-    authUserId: v.string(),
-    legacyOwnerId: v.string(),
-    secret: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const configuredSecret = process.env.LEGACY_OWNER_LINK_SECRET;
-    if (!configuredSecret || args.secret !== configuredSecret) {
-      throw new Error("Not authorized");
-    }
-    const now = Date.now();
-    const existing = await ctx.db
-      .query("userOwnerAliases")
-      .withIndex("by_pair", (q) =>
-        q.eq("authUserId", args.authUserId).eq("ownerId", args.legacyOwnerId),
-      )
-      .unique();
-    if (existing) {
-      await ctx.db.patch(existing._id, { updatedAt: now });
-      return existing._id;
-    }
-    return await ctx.db.insert("userOwnerAliases", {
-      authUserId: args.authUserId,
-      ownerId: args.legacyOwnerId,
-      source: "legacy-clerk",
-      createdAt: now,
-      updatedAt: now,
-    });
+    return await requireCurrentProfileId(ctx);
   },
 });
 
@@ -329,9 +322,9 @@ export const createOrRotateShare = mutation({
     mode: v.union(v.literal("view"), v.literal("edit")),
   },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     const input = sceneShareArgsSchema.parse(args);
-    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, profileId);
     const token = await generateUniqueShareToken(ctx.db);
     const now = Date.now();
     const existing = await ctx.db
@@ -350,7 +343,7 @@ export const createOrRotateShare = mutation({
     }
     await ctx.db.insert("sceneShares", {
       sceneId: args.sceneId,
-      ownerId: scene.ownerId,
+      profileId: scene.profileId,
       mode: input.mode,
       token,
       enabled: true,
@@ -368,9 +361,9 @@ export const setShareEnabled = mutation({
     enabled: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     const input = setSceneShareEnabledArgsSchema.parse(args);
-    await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
+    await requireOwnedScene(ctx.db, args.sceneId, profileId);
     const existing = await ctx.db
       .query("sceneShares")
       .withIndex("by_scene_mode", (q) =>
@@ -402,7 +395,7 @@ export const getSharedSceneByToken = query({
     }
     return {
       sceneId: result.scene._id,
-      storageOwnerId: result.scene.ownerId,
+      storageProfileId: result.scene.profileId,
       mode: result.share.mode,
       title: result.scene.title,
       version: result.scene.version,
@@ -422,17 +415,17 @@ export const createFolder = mutation({
     parentFolderId: v.union(v.id("folders"), v.null()),
   },
   handler: async (ctx, args) => {
-    const { primaryOwnerId, ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await ensureCurrentProfileId(ctx);
     const input = createFolderArgsSchema.parse(args);
     if (args.parentFolderId) {
       const parent = await requireOwnedFolder(
         ctx.db,
         args.parentFolderId,
-        ownerIds,
+        profileId,
         "Parent folder not found",
       );
       return await ctx.db.insert("folders", {
-        ownerId: parent.ownerId,
+        profileId: parent.profileId,
         name: input.name,
         parentFolderId: args.parentFolderId,
         createdAt: Date.now(),
@@ -441,7 +434,7 @@ export const createFolder = mutation({
     }
     const now = Date.now();
     return await ctx.db.insert("folders", {
-      ownerId: primaryOwnerId,
+      profileId,
       name: input.name,
       parentFolderId: args.parentFolderId,
       createdAt: now,
@@ -456,9 +449,9 @@ export const renameFolder = mutation({
     name: v.string(),
   },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     const input = renameFolderArgsSchema.parse(args);
-    await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
+    await requireOwnedFolder(ctx.db, args.folderId, profileId);
     await ctx.db.patch(args.folderId, {
       name: input.name,
       updatedAt: Date.now(),
@@ -472,9 +465,9 @@ export const moveFolder = mutation({
     parentFolderId: v.union(v.id("folders"), v.null()),
   },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     moveFolderArgsSchema.parse(args);
-    const folder = await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
+    const folder = await requireOwnedFolder(ctx.db, args.folderId, profileId);
     if (args.parentFolderId === args.folderId) {
       throw new Error("A folder cannot be moved into itself.");
     }
@@ -482,15 +475,15 @@ export const moveFolder = mutation({
       const parent = await requireOwnedFolder(
         ctx.db,
         args.parentFolderId,
-        ownerIds,
+        profileId,
         "Parent folder not found",
       );
-      if (parent.ownerId !== folder.ownerId) {
+      if (parent.profileId !== folder.profileId) {
         throw new Error("Parent folder not found");
       }
       const allFolders = await ctx.db
         .query("folders")
-        .withIndex("by_owner", (q) => q.eq("ownerId", folder.ownerId))
+        .withIndex("by_profile", (q) => q.eq("profileId", folder.profileId))
         .collect();
       let cursor = parent.parentFolderId;
       while (cursor) {
@@ -514,12 +507,12 @@ export const moveFolder = mutation({
 export const deleteFolder = mutation({
   args: { folderId: v.id("folders") },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     idArgsSchema.parse({ id: args.folderId });
-    const folder = await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
+    const folder = await requireOwnedFolder(ctx.db, args.folderId, profileId);
     const allFolders = await ctx.db
       .query("folders")
-      .withIndex("by_owner", (q) => q.eq("ownerId", folder.ownerId))
+      .withIndex("by_profile", (q) => q.eq("profileId", folder.profileId))
       .collect();
     const folderIds = new Set<typeof args.folderId>([args.folderId]);
     let changed = true;
@@ -539,7 +532,9 @@ export const deleteFolder = mutation({
     }
     const scenes = await ctx.db
       .query("scenes")
-      .withIndex("by_owner_updated", (q) => q.eq("ownerId", folder.ownerId))
+      .withIndex("by_profile_updated", (q) =>
+        q.eq("profileId", folder.profileId),
+      )
       .collect();
     for (const scene of scenes) {
       if (scene.folderId && folderIds.has(scene.folderId)) {
@@ -560,16 +555,20 @@ export const createScene = mutation({
     folderId: v.union(v.id("folders"), v.null()),
   },
   handler: async (ctx, args) => {
-    const { primaryOwnerId, ownerIds } = await requireOwnerContext(ctx);
+    const currentProfileId = await ensureCurrentProfileId(ctx);
     const input = createSceneArgsSchema.parse(args);
-    let ownerId = primaryOwnerId;
+    let profileId = currentProfileId;
     if (args.folderId) {
-      const folder = await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
-      ownerId = folder.ownerId;
+      const folder = await requireOwnedFolder(
+        ctx.db,
+        args.folderId,
+        currentProfileId,
+      );
+      profileId = folder.profileId;
     }
     const now = Date.now();
     return await ctx.db.insert("scenes", {
-      ownerId,
+      profileId,
       title: input.title,
       folderId: args.folderId,
       pinned: false,
@@ -593,12 +592,12 @@ export const updateScene = mutation({
     pinned: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     const input = updateSceneArgsSchema.parse(args);
-    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, profileId);
     if (args.folderId) {
-      const folder = await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
-      if (folder.ownerId !== scene.ownerId) {
+      const folder = await requireOwnedFolder(ctx.db, args.folderId, profileId);
+      if (folder.profileId !== scene.profileId) {
         throw new Error("Folder not found");
       }
     }
@@ -614,9 +613,9 @@ export const updateScene = mutation({
 export const deleteScene = mutation({
   args: { sceneId: v.id("scenes") },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     idArgsSchema.parse({ id: args.sceneId });
-    await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
+    await requireOwnedScene(ctx.db, args.sceneId, profileId);
     await deleteSharesForScene(ctx.db, args.sceneId);
     await deleteCollabRowsForScene(ctx.db, args.sceneId);
     await ctx.db.delete(args.sceneId);
@@ -626,14 +625,15 @@ export const deleteScene = mutation({
 export const duplicateScene = mutation({
   args: { sceneId: v.id("scenes") },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     idArgsSchema.parse({ id: args.sceneId });
-    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, profileId);
     const now = Date.now();
     return await ctx.db.insert("scenes", {
-      ownerId: scene.ownerId,
+      profileId: scene.profileId,
       title: `${scene.title} copy`,
       folderId: scene.folderId,
+      pinned: false,
       version: 0,
       currentObjectKey: null,
       thumbnailObjectKey: null,
@@ -655,10 +655,10 @@ export const commitSceneSave = mutation({
     thumbnailObjectKey: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
-    const { ownerIds } = await requireOwnerContext(ctx);
+    const profileId = await requireCurrentProfileId(ctx);
     const input = commitSceneSaveArgsSchema.parse(args);
-    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
-    assertValidSceneObjectKeys(scene.ownerId, args.sceneId, input);
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, profileId);
+    assertValidSceneObjectKeys(scene.profileId, args.sceneId, input);
     // No-op when the content is unchanged: skipping the patch avoids a version
     // bump that would re-fire the getLibrary subscription and re-render clients.
     if (scene.contentHash === input.contentHash) {
@@ -680,15 +680,15 @@ export const commitSharedSceneSave = mutation({
     thumbnailObjectKey: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
-    await requireOwnerId(ctx);
+    await requireAuthSubject(ctx);
     const input = commitSharedSceneSaveArgsSchema.parse(args);
     const result = await getShareSceneByToken(ctx.db, input.token);
     if (!result || result.share.mode !== "edit") {
       throw new Error("Share link not found");
     }
     const sceneId = result.scene._id;
-    const storageOwnerId = result.scene.ownerId;
-    assertValidSceneObjectKeys(storageOwnerId, sceneId, input);
+    const storageProfileId = result.scene.profileId;
+    assertValidSceneObjectKeys(storageProfileId, sceneId, input);
     if (result.scene.contentHash === input.contentHash) {
       return;
     }

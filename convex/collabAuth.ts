@@ -25,31 +25,25 @@ export async function hashSecret(secret: string) {
 }
 
 export async function getUserId(ctx: {
+  db: DatabaseReader;
   auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
 }) {
   const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? null;
-}
-
-async function getAuthorizedOwnerIds(
-  db: DatabaseReader,
-  userId: string | null,
-) {
-  if (!userId) {
-    return [];
+  if (!identity) {
+    return null;
   }
-  const aliases = await db
-    .query("userOwnerAliases")
-    .withIndex("by_auth_user", (q) => q.eq("authUserId", userId))
-    .collect();
-  return Array.from(new Set([userId, ...aliases.map((alias) => alias.ownerId)]));
+  const profile = await ctx.db
+    .query("profiles")
+    .withIndex("by_auth_subject", (q) => q.eq("authSubject", identity.subject))
+    .unique();
+  return profile?._id ?? null;
 }
 
 export type AuthorizedScene = {
   scene: Doc<"scenes">;
-  ownerId: string;
-  viaOwner: boolean;
-  userId: string | null;
+  profileId: Id<"profiles">;
+  viaProfile: boolean;
+  userId: Id<"profiles"> | null;
 };
 
 /**
@@ -69,9 +63,8 @@ export async function authorizeEdit(
     return null;
   }
   const userId = await getUserId(ctx);
-  const ownerIds = await getAuthorizedOwnerIds(ctx.db, userId);
-  if (ownerIds.includes(scene.ownerId)) {
-    return { scene, ownerId: scene.ownerId, viaOwner: true, userId };
+  if (userId && userId === scene.profileId) {
+    return { scene, profileId: scene.profileId, viaProfile: true, userId };
   }
   if (args.token) {
     const parsed = shareTokenSchema.safeParse(args.token);
@@ -87,9 +80,9 @@ export async function authorizeEdit(
       share.enabled &&
       share.mode === "edit" &&
       share.sceneId === args.sceneId &&
-      share.ownerId === scene.ownerId
+      share.profileId === scene.profileId
     ) {
-      return { scene, ownerId: scene.ownerId, viaOwner: false, userId };
+      return { scene, profileId: scene.profileId, viaProfile: false, userId };
     }
   }
   return null;

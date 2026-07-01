@@ -36,41 +36,46 @@ function getR2Client() {
   return { client: cachedClient, bucket: config.CLOUDFLARE_R2_BUCKET };
 }
 
-export function buildSceneObjectKey(ownerId: string, sceneId: string) {
-  const safeOwnerId = encodeURIComponent(ownerId);
+export function buildSceneObjectKey(profileId: string, sceneId: string) {
+  const safeProfileId = encodeURIComponent(profileId);
   const safeSceneId = encodeURIComponent(sceneId);
-  return `users/${safeOwnerId}/scenes/${safeSceneId}/head/excalidraw.json`;
+  return `users/${safeProfileId}/scenes/${safeSceneId}/head/excalidraw.json`;
 }
 
-export function buildSceneThumbnailObjectKey(ownerId: string, sceneId: string) {
-  const safeOwnerId = encodeURIComponent(ownerId);
+export function buildSceneThumbnailObjectKey(
+  profileId: string,
+  sceneId: string,
+) {
+  const safeProfileId = encodeURIComponent(profileId);
   const safeSceneId = encodeURIComponent(sceneId);
-  return `users/${safeOwnerId}/scenes/${safeSceneId}/head/thumbnail.png`;
+  return `users/${safeProfileId}/scenes/${safeSceneId}/head/thumbnail.png`;
 }
 
-export function isSceneObjectKeyForOwner(args: {
-  ownerId: string;
+export function isSceneObjectKeyForProfile(args: {
+  profileId: string;
   sceneId: string;
   key: string;
 }) {
-  return args.key === buildSceneObjectKey(args.ownerId, args.sceneId);
+  return args.key === buildSceneObjectKey(args.profileId, args.sceneId);
 }
 
-export function isSceneThumbnailObjectKeyForOwner(args: {
-  ownerId: string;
+export function isSceneThumbnailObjectKeyForProfile(args: {
+  profileId: string;
   sceneId: string;
   key: string;
 }) {
-  return args.key === buildSceneThumbnailObjectKey(args.ownerId, args.sceneId);
+  return (
+    args.key === buildSceneThumbnailObjectKey(args.profileId, args.sceneId)
+  );
 }
 
 export async function createSceneUploadUrl(args: {
-  ownerId: string;
+  profileId: string;
   sceneId: string;
   contentType: "application/json" | "application/vnd.excalidraw+json";
 }) {
   const { client, bucket } = getR2Client();
-  const key = buildSceneObjectKey(args.ownerId, args.sceneId);
+  const key = buildSceneObjectKey(args.profileId, args.sceneId);
   const url = await getSignedUrl(
     client,
     new PutObjectCommand({
@@ -84,11 +89,11 @@ export async function createSceneUploadUrl(args: {
 }
 
 export async function createSceneDownloadUrl(args: {
-  ownerId: string;
+  profileId: string;
   sceneId: string;
 }) {
   const { client, bucket } = getR2Client();
-  const key = buildSceneObjectKey(args.ownerId, args.sceneId);
+  const key = buildSceneObjectKey(args.profileId, args.sceneId);
   const url = await getSignedUrl(
     client,
     new GetObjectCommand({
@@ -101,11 +106,11 @@ export async function createSceneDownloadUrl(args: {
 }
 
 export async function createSceneThumbnailUploadUrl(args: {
-  ownerId: string;
+  profileId: string;
   sceneId: string;
 }) {
   const { client, bucket } = getR2Client();
-  const key = buildSceneThumbnailObjectKey(args.ownerId, args.sceneId);
+  const key = buildSceneThumbnailObjectKey(args.profileId, args.sceneId);
   const url = await getSignedUrl(
     client,
     new PutObjectCommand({
@@ -123,11 +128,11 @@ export async function createSceneThumbnailUploadUrl(args: {
 // null when the object doesn't exist yet (e.g. a scene saved before this
 // feature, or one whose thumbnail upload failed).
 export async function getSceneThumbnailObject(args: {
-  ownerId: string;
+  profileId: string;
   sceneId: string;
 }): Promise<{ body: Uint8Array; contentType: string } | null> {
   const { client, bucket } = getR2Client();
-  const key = buildSceneThumbnailObjectKey(args.ownerId, args.sceneId);
+  const key = buildSceneThumbnailObjectKey(args.profileId, args.sceneId);
   try {
     const result = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
@@ -143,12 +148,15 @@ export async function getSceneThumbnailObject(args: {
 }
 
 export async function deleteSceneObject(args: {
-  ownerId: string;
+  profileId: string;
   sceneId: string;
 }) {
   const { client, bucket } = getR2Client();
-  const key = buildSceneObjectKey(args.ownerId, args.sceneId);
-  const thumbnailKey = buildSceneThumbnailObjectKey(args.ownerId, args.sceneId);
+  const key = buildSceneObjectKey(args.profileId, args.sceneId);
+  const thumbnailKey = buildSceneThumbnailObjectKey(
+    args.profileId,
+    args.sceneId,
+  );
   // Deletes are idempotent in R2, so removing the thumbnail unconditionally is
   // safe even for scenes that never had one.
   await Promise.all([
@@ -159,14 +167,20 @@ export async function deleteSceneObject(args: {
 }
 
 export async function copySceneObject(args: {
-  sourceOwnerId: string;
+  sourceProfileId: string;
   sourceSceneId: string;
-  targetOwnerId: string;
+  targetProfileId: string;
   targetSceneId: string;
 }) {
   const { client, bucket } = getR2Client();
-  const sourceKey = buildSceneObjectKey(args.sourceOwnerId, args.sourceSceneId);
-  const targetKey = buildSceneObjectKey(args.targetOwnerId, args.targetSceneId);
+  const sourceKey = buildSceneObjectKey(
+    args.sourceProfileId,
+    args.sourceSceneId,
+  );
+  const targetKey = buildSceneObjectKey(
+    args.targetProfileId,
+    args.targetSceneId,
+  );
   await client.send(
     new CopyObjectCommand({
       Bucket: bucket,
@@ -180,18 +194,18 @@ export async function copySceneObject(args: {
 }
 
 export async function copySceneThumbnailObject(args: {
-  sourceOwnerId: string;
+  sourceProfileId: string;
   sourceSceneId: string;
-  targetOwnerId: string;
+  targetProfileId: string;
   targetSceneId: string;
 }) {
   const { client, bucket } = getR2Client();
   const sourceKey = buildSceneThumbnailObjectKey(
-    args.sourceOwnerId,
+    args.sourceProfileId,
     args.sourceSceneId,
   );
   const targetKey = buildSceneThumbnailObjectKey(
-    args.targetOwnerId,
+    args.targetProfileId,
     args.targetSceneId,
   );
   try {

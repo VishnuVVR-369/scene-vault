@@ -148,8 +148,8 @@ export const startRoom = mutation({
   },
   handler: async (ctx, args) => {
     const auth = await authorizeEdit(ctx, args);
-    if (!auth || !auth.viaOwner || !auth.userId) {
-      throw new Error("Only the scene owner can start a room");
+    if (!auth || !auth.viaProfile || !auth.userId) {
+      throw new Error("Only the scene profile can start a room");
     }
     const now = Date.now();
     const existing = await getRoom(ctx, args.sceneId);
@@ -162,7 +162,7 @@ export const startRoom = mutation({
     }
     if (existing && !existing.startedByUserId && !existing.stoppedAt) {
       await ctx.db.patch(existing._id, {
-        ownerId: auth.ownerId,
+        profileId: auth.profileId,
         startedByUserId: auth.userId,
         startedAt: now,
         stoppedAt: null,
@@ -179,7 +179,7 @@ export const startRoom = mutation({
     const status = auth.scene.currentObjectKey ? "needsHydration" : "ready";
     await ctx.db.insert("liveRooms", {
       sceneId: args.sceneId,
-      ownerId: auth.ownerId,
+      profileId: auth.profileId,
       status,
       hydratingSessionId: null,
       hydratingStartedAt: null,
@@ -212,7 +212,7 @@ export const joinRoom = mutation({
     const userId = await getUserId(ctx);
     const joinRateKey = userId
       ? `join:user:${userId}`
-      : `join:token:${await hashSecret(args.token ?? auth.ownerId)}`;
+      : `join:token:${await hashSecret(args.token ?? auth.profileId)}`;
     await enforceRateLimit(
       ctx,
       { sceneId: args.sceneId, roomSessionId: joinRateKey, action: "joinRoom" },
@@ -278,8 +278,8 @@ export const joinRoom = mutation({
       sessionSecret,
       epoch: activeRoom.epoch,
       needsHydration,
-      ownerId: auth.ownerId,
-      viaOwner: auth.viaOwner,
+      profileId: auth.profileId,
+      viaProfile: auth.viaProfile,
       title: auth.scene.title,
     };
   },
@@ -373,11 +373,11 @@ export const getRoomView = query({
       active,
       status: active ? room!.status : ("inactive" as const),
       epoch: room?.epoch ?? 0,
-      ownerId: auth.ownerId,
-      viaOwner: auth.viaOwner,
+      profileId: auth.profileId,
+      viaProfile: auth.viaProfile,
       title: auth.scene.title,
       startedByUserId: active ? (room!.startedByUserId ?? null) : null,
-      canStart: auth.viaOwner && !active,
+      canStart: auth.viaProfile && !active,
       canStop:
         active && auth.userId !== null && room!.startedByUserId === auth.userId,
     };

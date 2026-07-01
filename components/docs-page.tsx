@@ -348,23 +348,29 @@ const STACK = [
 
 const SCHEMA = [
   {
+    name: "profiles",
+    desc: "SceneVault app profile keyed by the Better Auth subject. Created lazily on first write.",
+    fields: "authSubject · timestamps",
+    indexes: ["by_auth_subject"],
+  },
+  {
     name: "folders",
-    desc: "Nested folder tree, owner-scoped. Self-referential parentFolderId; moves are cycle-checked server-side.",
-    fields: "ownerId · name · parentFolderId · timestamps",
-    indexes: ["by_owner", "by_owner_parent"],
+    desc: "Nested folder tree, profile-scoped. Self-referential parentFolderId; moves are cycle-checked server-side.",
+    fields: "profileId · name · parentFolderId · timestamps",
+    indexes: ["by_profile", "by_profile_parent"],
   },
   {
     name: "scenes",
     desc: "Scene metadata and the authoritative pointer to current bytes: title, folder, monotonic version, R2 object keys, byte size, and content hash.",
     fields:
-      "ownerId · title · folderId · version · currentObjectKey · contentHash",
-    indexes: ["by_owner_folder", "by_owner_updated"],
+      "profileId · title · folderId · version · currentObjectKey · contentHash",
+    indexes: ["by_profile_folder", "by_profile_updated"],
   },
   {
     name: "sceneShares",
     desc: "View / edit share tokens per scene. Enable, disable, or rotate without touching the scene. At most one row per (scene, mode).",
-    fields: "sceneId · ownerId · mode · token · enabled",
-    indexes: ["by_token", "by_scene_mode", "by_owner"],
+    fields: "sceneId · profileId · mode · token · enabled",
+    indexes: ["by_token", "by_scene_mode", "by_profile"],
   },
   {
     name: "liveRooms",
@@ -418,7 +424,7 @@ const DATA_FLOWS = [
     title: "Load",
     summary: "getLibrary pointer → presigned GET → R2",
     steps: [
-      "The editor reads the current object key from the owner-scoped getLibrary subscription.",
+      "The editor reads the current object key from the profile-scoped getLibrary subscription.",
       "Client GETs /api/scenes/[id]/download; the route re-checks access with getSceneStorageAccess and mints a presigned R2 GET URL.",
       "Client fetches the bundle bytes directly from R2 and hydrates the canvas — bytes never pass through the Next.js server.",
     ],
@@ -446,13 +452,13 @@ const TRUST_LAYERS = [
   {
     icon: KeyRound,
     title: "Route handler — server-derived identity",
-    body: "Each storage route re-derives the Better Auth user ID server-side, mints a fresh Convex JWT, and asks Convex who owns the scene. The owner id used to build the R2 key comes back from Convex — never from the request.",
+    body: "Each storage route re-derives the Better Auth session server-side, mints a fresh Convex JWT, and asks Convex which profile owns the scene. The profile id used to build the R2 key comes back from Convex — never from the request.",
     accent: "var(--chart-3)",
   },
   {
     icon: Database,
-    title: "Convex — owner-scoped data layer",
-    body: "Every query and mutation independently resolves the caller via ctx.auth and filters by ownerId. Commit mutations recompute the expected object key and reject mismatches, so a forged key can't escape the caller's namespace.",
+    title: "Convex — profile-scoped data layer",
+    body: "Every query and mutation independently resolves the caller via ctx.auth, maps the Better Auth subject to a SceneVault profile, and filters by profileId. Commit mutations recompute the expected object key and reject mismatches, so a forged key can't escape the caller's namespace.",
     accent: "var(--chart-5)",
   },
 ];
@@ -970,7 +976,7 @@ open http://localhost:3000/dashboard`}
           {/* Data model */}
           <Section id="data-model" eyebrow="Architecture" title="Data model">
             <Lead>
-              All metadata lives in Convex, owner-scoped and indexed for the
+              All metadata lives in Convex, profile-scoped and indexed for the
               exact access patterns the app needs. Eight tables, no joins on the
               hot path.
             </Lead>
@@ -1001,11 +1007,11 @@ open http://localhost:3000/dashboard`}
             </div>
             <p>
               Indexes mirror the queries exactly. The dashboard&apos;s{" "}
-              <Code>getLibrary</Code> reads folders by <Code>by_owner</Code> and
-              scenes by <Code>by_owner_updated</Code> in parallel; share lookups
-              hit the unique <Code>by_token</Code> index; and every collab read
-              is a single <Code>by_scene</Code> or <Code>by_room_session</Code>{" "}
-              scan.
+              <Code>getLibrary</Code> reads folders by <Code>by_profile</Code>{" "}
+              and scenes by <Code>by_profile_updated</Code> in parallel; share
+              lookups hit the unique <Code>by_token</Code> index; and every
+              collab read is a single <Code>by_scene</Code> or{" "}
+              <Code>by_room_session</Code> scan.
             </p>
           </Section>
 
@@ -1017,13 +1023,13 @@ open http://localhost:3000/dashboard`}
           >
             <Lead>
               Scene bundles and thumbnails are stored as objects in a Cloudflare
-              R2 bucket under a deterministic, owner-scoped key layout.
+              R2 bucket under a deterministic, profile-scoped key layout.
             </Lead>
             <CodeBlock
               language="text"
               filename="R2 object key layout"
-              code={`users/{ownerId}/scenes/{sceneId}/head/excalidraw.json   # scene bundle
-users/{ownerId}/scenes/{sceneId}/head/thumbnail.png     # PNG preview`}
+              code={`users/{profileId}/scenes/{sceneId}/head/excalidraw.json   # scene bundle
+users/{profileId}/scenes/{sceneId}/head/thumbnail.png     # PNG preview`}
             />
             <p>
               Browsers never receive long-lived credentials. Every read and
@@ -1031,10 +1037,10 @@ users/{ownerId}/scenes/{sceneId}/head/thumbnail.png     # PNG preview`}
               <strong className="text-foreground">presigned URL</strong> minted
               server-side with a 5-minute (<Code>300s</Code>) expiry, scoped to
               one exact object key and HTTP method. Because the key is{" "}
-              <em>derived</em> from <Code>ownerId</Code> + <Code>sceneId</Code>{" "}
-              rather than supplied by the client, and the commit mutations
-              recompute and re-check it, a client can never read or write
-              outside its own namespace.
+              <em>derived</em> from <Code>profileId</Code> +{" "}
+              <Code>sceneId</Code> rather than supplied by the client, and the
+              commit mutations recompute and re-check it, a client can never
+              read or write outside its own namespace.
             </p>
             <p>
               Object operations are kept simple and idempotent. Deletes remove
@@ -1220,7 +1226,7 @@ export default function proxy(req: NextRequest) {
               edit token, but durable R2 persistence still requires sign-in: the
               upload, commit, thumbnail-upload, and duplicate routes demand a
               Better Auth session. A guest who duplicates a shared scene gets a
-              fresh copy under their <em>own</em> owner namespace. The token
+              fresh copy under their <em>own</em> profile namespace. The token
               grants entry to the room; it never grants direct write access to
               someone else&apos;s storage.
             </p>
@@ -1239,9 +1245,9 @@ export default function proxy(req: NextRequest) {
             </Lead>
             <SubHeading>Room lifecycle</SubHeading>
             <p>
-              Only the scene owner can <Code>startRoom</Code>. The room then
-              moves through four states as the first joiner seeds it from the
-              durable R2 snapshot:
+              Only the scene&apos;s profile can <Code>startRoom</Code>. The room
+              then moves through four states as the first joiner seeds it from
+              the durable R2 snapshot:
             </p>
             <div className="not-prose flex flex-col gap-2 sm:flex-row sm:items-stretch">
               {ROOM_STATES.map(({ state, desc }, i) => (

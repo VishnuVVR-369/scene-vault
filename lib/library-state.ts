@@ -16,10 +16,10 @@ import { normalizeSceneBundle } from "@/lib/excalidraw-scene";
 const DEFAULT_OWNER_ID = "local-user";
 
 export function createInitialLibraryState(
-  ownerId = DEFAULT_OWNER_ID,
+  profileId = DEFAULT_OWNER_ID,
 ): LibraryState {
   return libraryStateSchema.parse({
-    ownerId,
+    profileId,
     folders: [],
     scenes: [],
     bundles: {},
@@ -43,7 +43,7 @@ export function createFolder(
   const now = opts.now ?? Date.now();
   const folder: Folder = {
     id: opts.id ?? createId("fld"),
-    ownerId: state.ownerId,
+    profileId: state.profileId,
     name: parsed.name,
     parentFolderId: parsed.parentFolderId,
     createdAt: now,
@@ -158,7 +158,7 @@ export function createScene(
   const now = opts.now ?? Date.now();
   const scene: SceneMetadata = {
     id: opts.id ?? createId("scn"),
-    ownerId: state.ownerId,
+    profileId: state.profileId,
     title: parsed.title,
     folderId: parsed.folderId,
     pinned: false,

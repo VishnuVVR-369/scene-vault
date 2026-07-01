@@ -21,7 +21,7 @@ export async function GET(_request: Request, ctx: ShareRouteContext) {
     return noStoreJson({ error: "Scene thumbnail not found" }, { status: 404 });
   }
   const object = await getSceneThumbnailObject({
-    ownerId: authResult.access.storageOwnerId,
+    profileId: authResult.access.storageProfileId,
     sceneId: authResult.access.sceneId,
   });
   if (!object) {

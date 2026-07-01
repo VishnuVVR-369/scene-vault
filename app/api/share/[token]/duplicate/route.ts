@@ -19,11 +19,11 @@ const createScene = makeFunctionReference<
   string
 >("library:createScene");
 
-const getCurrentStorageOwnerId = makeFunctionReference<
+const getCurrentStorageProfileId = makeFunctionReference<
   "query",
   Record<string, never>,
   string
->("library:getCurrentStorageOwnerId");
+>("library:getCurrentStorageProfileId");
 
 const commitSceneSave = makeFunctionReference<
   "mutation",
@@ -55,15 +55,15 @@ export async function POST(_request: Request, ctx: ShareRouteContext) {
     );
   }
 
-  const source = accessResult.access;
-  const targetOwnerId = await fetchQuery(
-    getCurrentStorageOwnerId,
-    {},
-    { token: convexToken },
-  );
   const sceneId = await fetchMutation(
     createScene,
-    { title: `${source.title} copy`, folderId: null },
+    { title: `${accessResult.access.title} copy`, folderId: null },
+    { token: convexToken },
+  );
+  const source = accessResult.access;
+  const targetProfileId = await fetchQuery(
+    getCurrentStorageProfileId,
+    {},
     { token: convexToken },
   );
 
@@ -75,16 +75,16 @@ export async function POST(_request: Request, ctx: ShareRouteContext) {
       );
     }
     const copiedScene = await copySceneObject({
-      sourceOwnerId: source.storageOwnerId,
+      sourceProfileId: source.storageProfileId,
       sourceSceneId: source.sceneId,
-      targetOwnerId,
+      targetProfileId,
       targetSceneId: sceneId,
     });
     const copiedThumbnail = source.thumbnailObjectKey
       ? await copySceneThumbnailObject({
-          sourceOwnerId: source.storageOwnerId,
+          sourceProfileId: source.storageProfileId,
           sourceSceneId: source.sceneId,
-          targetOwnerId,
+          targetProfileId,
           targetSceneId: sceneId,
         })
       : null;

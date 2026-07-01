@@ -10,10 +10,16 @@ export const seed = internalMutation({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const profileId = await ctx.db.insert("profiles", {
+      authSubject: `smoke-${args.token}`,
+      createdAt: now,
+      updatedAt: now,
+    });
     const sceneId = await ctx.db.insert("scenes", {
-      ownerId: "smoke-owner",
+      profileId,
       title: "Collab smoke",
       folderId: null,
+      pinned: false,
       version: 0,
       currentObjectKey: null,
       thumbnailObjectKey: null,
@@ -25,7 +31,7 @@ export const seed = internalMutation({
     });
     await ctx.db.insert("sceneShares", {
       sceneId,
-      ownerId: "smoke-owner",
+      profileId,
       mode: "edit",
       token: args.token,
       enabled: true,
@@ -34,11 +40,11 @@ export const seed = internalMutation({
     });
     await ctx.db.insert("liveRooms", {
       sceneId,
-      ownerId: "smoke-owner",
+      profileId,
       status: "ready",
       hydratingSessionId: null,
       hydratingStartedAt: null,
-      startedByUserId: "smoke-owner",
+      startedByUserId: profileId,
       startedAt: now,
       stoppedAt: null,
       epoch: 0,

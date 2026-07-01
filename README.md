@@ -57,10 +57,9 @@ returns `This Convex deployment does not have HTTP actions enabled`, run
 `pnpm exec convex dev --once` so `convex/http.ts` is pushed to the active Convex
 deployment.
 
-Legacy Clerk-owned scene namespaces are preserved as data only. Clerk no longer
-handles authentication. To reconnect an existing Clerk `ownerId` after the user
-signs in with Better Auth, link it to the new Better Auth user ID with
-`library:linkLegacyOwner` using `LEGACY_OWNER_LINK_SECRET`.
+SceneVault uses Better Auth as the only authentication system. Convex creates a
+SceneVault profile for a signed-in Better Auth subject on first write, then
+folders, scenes, shares, and live rooms reference that profile directly.
 
 Convex `_generated` files and HTTP actions are not created until the project is linked and pushed. Run `pnpm exec convex dev --once` before deploying the Convex backend.
 

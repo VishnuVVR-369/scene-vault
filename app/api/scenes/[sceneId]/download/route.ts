@@ -18,7 +18,7 @@ export async function GET(_request: Request, ctx: SceneRouteContext) {
     return noStoreJson({ error: "Scene object not found" }, { status: 404 });
   }
   const target = await createSceneDownloadUrl({
-    ownerId: authResult.access.storageOwnerId,
+    profileId: authResult.access.storageProfileId,
     sceneId,
   });
   return noStoreJson(target);

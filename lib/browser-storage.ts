@@ -4,17 +4,17 @@ import { createInitialLibraryState } from "@/lib/library-state";
 
 const STORAGE_KEY = "scenevault.library.v1";
 
-export function loadLocalLibraryState(ownerId = "local-user"): LibraryState {
+export function loadLocalLibraryState(profileId = "local-user"): LibraryState {
   if (typeof window === "undefined") {
-    return createInitialLibraryState(ownerId);
+    return createInitialLibraryState(profileId);
   }
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) {
-    return createInitialLibraryState(ownerId);
+    return createInitialLibraryState(profileId);
   }
   const parsed = libraryStateSchema.safeParse(JSON.parse(raw));
   if (!parsed.success) {
-    return createInitialLibraryState(ownerId);
+    return createInitialLibraryState(profileId);
   }
   return libraryStateSchema.parse({
     ...parsed.data,

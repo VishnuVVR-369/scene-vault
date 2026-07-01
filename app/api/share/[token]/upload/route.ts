@@ -33,7 +33,7 @@ export async function POST(request: Request, ctx: ShareRouteContext) {
   const body = bodyResult.data;
 
   const target = await createSceneUploadUrl({
-    ownerId: authResult.access.storageOwnerId,
+    profileId: authResult.access.storageProfileId,
     sceneId: authResult.access.sceneId,
     contentType: body.contentType,
   });

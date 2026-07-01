@@ -8,7 +8,7 @@ import { PRESENCE_TTL_MS, ROOM_IDLE_GRACE_MS } from "./collabLogic";
 // convex-test discovers function modules from the convex/ directory.
 const modules = import.meta.glob("./**/*.ts");
 
-const OWNER = "owner-1";
+const AUTH_SUBJECT = "better-auth-user-1";
 const TOKEN = "a".repeat(40);
 
 function setup() {
@@ -17,15 +17,35 @@ function setup() {
 
 type T = ReturnType<typeof setup>;
 
+async function seedProfile(t: T) {
+  return t.run(async (ctx) => {
+    const existing = await ctx.db
+      .query("profiles")
+      .withIndex("by_auth_subject", (q) => q.eq("authSubject", AUTH_SUBJECT))
+      .unique();
+    if (existing) {
+      return existing._id;
+    }
+    const now = Date.now();
+    return await ctx.db.insert("profiles", {
+      authSubject: AUTH_SUBJECT,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+}
+
 async function seedScene(
   t: T,
   opts: { currentObjectKey?: string | null; contentHash?: string | null } = {},
 ) {
+  const profileId = await seedProfile(t);
   return t.run(async (ctx) =>
     ctx.db.insert("scenes", {
-      ownerId: OWNER,
+      profileId,
       title: "Test scene",
       folderId: null,
+      pinned: false,
       version: 0,
       currentObjectKey: opts.currentObjectKey ?? null,
       thumbnailObjectKey: null,
@@ -39,17 +59,21 @@ async function seedScene(
 }
 
 async function seedEditShare(t: T, sceneId: string, enabled = true) {
-  return t.run(async (ctx) =>
-    ctx.db.insert("sceneShares", {
+  return t.run(async (ctx) => {
+    const scene = await ctx.db.get(sceneId as never);
+    if (!scene) {
+      throw new Error("Scene not found");
+    }
+    return await ctx.db.insert("sceneShares", {
       sceneId: sceneId as never,
-      ownerId: OWNER,
+      profileId: scene.profileId,
       mode: "edit",
       token: TOKEN,
       enabled,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    }),
-  );
+    });
+  });
 }
 
 function el(
@@ -72,37 +96,41 @@ function el(
   };
 }
 
-const owner = (t: T) => t.withIdentity({ subject: OWNER });
+const profile = (t: T) => t.withIdentity({ subject: AUTH_SUBJECT });
 
 async function startRoom(t: T, sceneId: string) {
-  return owner(t).mutation(api.collab.startRoom, { sceneId: sceneId as never });
+  return profile(t).mutation(api.collab.startRoom, {
+    sceneId: sceneId as never,
+  });
 }
 
-async function joinOwner(t: T, sceneId: string) {
-  return owner(t).mutation(api.collab.joinRoom, {
+async function joinProfile(t: T, sceneId: string) {
+  return profile(t).mutation(api.collab.joinRoom, {
     sceneId: sceneId as never,
-    name: "Owner",
+    name: "Profile",
     color: "#ff0000",
   });
 }
 
 describe("collab backend", () => {
-  it("keeps live rooms inactive until the owner starts one", async () => {
+  it("keeps live rooms inactive until the profile starts one", async () => {
     const t = setup();
     const sceneId = await seedScene(t);
     await seedEditShare(t, sceneId);
 
-    const ownerView = await owner(t).query(api.collab.getRoomView, { sceneId });
-    expect(ownerView.authorized).toBe(true);
-    if (ownerView.authorized) {
-      expect(ownerView.active).toBe(false);
-      expect(ownerView.canStart).toBe(true);
+    const profileView = await profile(t).query(api.collab.getRoomView, {
+      sceneId,
+    });
+    expect(profileView.authorized).toBe(true);
+    if (profileView.authorized) {
+      expect(profileView.active).toBe(false);
+      expect(profileView.canStart).toBe(true);
     }
 
     await expect(
-      owner(t).mutation(api.collab.joinRoom, {
+      profile(t).mutation(api.collab.joinRoom, {
         sceneId,
-        name: "Owner",
+        name: "Profile",
         color: "#ff0000",
       }),
     ).rejects.toThrow("Room has not been started");
@@ -128,14 +156,18 @@ describe("collab backend", () => {
     }
   });
 
-  it("claims legacy auto-created rooms without deleting their live data", async () => {
+  it("claims prestarted rooms without deleting their live data", async () => {
     const t = setup();
     const sceneId = await seedScene(t);
     await t.run(async (ctx) => {
       const now = Date.now();
+      const scene = await ctx.db.get(sceneId as never);
+      if (!scene) {
+        throw new Error("Scene not found");
+      }
       await ctx.db.insert("liveRooms", {
         sceneId: sceneId as never,
-        ownerId: OWNER,
+        profileId: scene.profileId,
         status: "ready",
         hydratingSessionId: null,
         hydratingStartedAt: null,
@@ -147,8 +179,8 @@ describe("collab backend", () => {
       });
       await ctx.db.insert("roomElements", {
         sceneId: sceneId as never,
-        elementId: "legacy",
-        data: el("legacy", 1, 1),
+        elementId: "existing",
+        data: el("existing", 1, 1),
         version: 1,
         versionNonce: 1,
         updatedAt: now,
@@ -162,30 +194,31 @@ describe("collab backend", () => {
         .withIndex("by_scene", (q) => q.eq("sceneId", sceneId))
         .unique(),
     );
-    expect(room?.startedByUserId).toBe(OWNER);
-    const elements = await owner(t).query(api.collab.getRoomElements, {
+    const profileId = await seedProfile(t);
+    expect(room?.startedByUserId).toBe(profileId);
+    const elements = await profile(t).query(api.collab.getRoomElements, {
       sceneId,
     });
-    expect(elements?.map((element) => element.elementId)).toEqual(["legacy"]);
+    expect(elements?.map((element) => element.elementId)).toEqual(["existing"]);
   });
 
-  it("owner can join, push elements, and read them back", async () => {
+  it("profile can join, push elements, and read them back", async () => {
     const t = setup();
     const sceneId = await seedScene(t);
     await startRoom(t, sceneId);
-    const join = await joinOwner(t, sceneId);
+    const join = await joinProfile(t, sceneId);
     expect(join.needsHydration).toBe(false);
     expect(join.roomSessionId).toBeTruthy();
     expect(join.sessionSecret).toBeTruthy();
 
-    await owner(t).mutation(api.collab.pushElements, {
+    await profile(t).mutation(api.collab.pushElements, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
       elements: [el("a", 1, 5)],
     });
 
-    const elements = await owner(t).query(api.collab.getRoomElements, {
+    const elements = await profile(t).query(api.collab.getRoomElements, {
       sceneId,
     });
     expect(elements).not.toBeNull();
@@ -226,9 +259,9 @@ describe("collab backend", () => {
     const t = setup();
     const sceneId = await seedScene(t);
     await startRoom(t, sceneId);
-    const join = await joinOwner(t, sceneId);
+    const join = await joinProfile(t, sceneId);
     const push = (elements: unknown[]) =>
-      owner(t).mutation(api.collab.pushElements, {
+      profile(t).mutation(api.collab.pushElements, {
         sceneId,
         roomSessionId: join.roomSessionId,
         sessionSecret: join.sessionSecret,
@@ -237,19 +270,19 @@ describe("collab backend", () => {
 
     await push([el("a", 1, 5)]);
     await push([el("a", 1, 9)]); // equal version, higher nonce -> rejected
-    let stored = (await owner(t).query(api.collab.getRoomElements, {
+    let stored = (await profile(t).query(api.collab.getRoomElements, {
       sceneId,
     }))![0];
     expect(stored.versionNonce).toBe(5);
 
     await push([el("a", 1, 2)]); // equal version, lower nonce -> accepted
-    stored = (await owner(t).query(api.collab.getRoomElements, {
+    stored = (await profile(t).query(api.collab.getRoomElements, {
       sceneId,
     }))![0];
     expect(stored.versionNonce).toBe(2);
 
     await push([el("a", 2, 999)]); // higher version -> accepted
-    stored = (await owner(t).query(api.collab.getRoomElements, {
+    stored = (await profile(t).query(api.collab.getRoomElements, {
       sceneId,
     }))![0];
     expect(stored.version).toBe(2);
@@ -381,9 +414,9 @@ describe("collab backend", () => {
     const t = setup();
     const sceneId = await seedScene(t);
     await startRoom(t, sceneId);
-    const join = await joinOwner(t, sceneId);
+    const join = await joinProfile(t, sceneId);
     await expect(
-      owner(t).mutation(api.collab.pushElements, {
+      profile(t).mutation(api.collab.pushElements, {
         sceneId,
         roomSessionId: join.roomSessionId,
         sessionSecret: "not-the-secret",
@@ -396,19 +429,21 @@ describe("collab backend", () => {
     const t = setup();
     const sceneId = await seedScene(t);
     await startRoom(t, sceneId);
-    const join = await joinOwner(t, sceneId);
-    await owner(t).mutation(api.collab.updatePresence, {
+    const join = await joinProfile(t, sceneId);
+    await profile(t).mutation(api.collab.updatePresence, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
-      name: "Owner",
+      name: "Profile",
       color: "#ff0000",
       cursorX: 12,
       cursorY: 34,
       button: "down",
       selectedIds: ["a"],
     });
-    const presence = await owner(t).query(api.collab.getPresence, { sceneId });
+    const presence = await profile(t).query(api.collab.getPresence, {
+      sceneId,
+    });
     const mine = presence!.find((p) => p.roomSessionId === join.roomSessionId);
     expect(mine?.cursorX).toBe(12);
     expect(mine?.button).toBe("down");
@@ -419,11 +454,11 @@ describe("collab backend", () => {
     const t = setup();
     const sceneId = await seedScene(t);
     await startRoom(t, sceneId);
-    const join = await joinOwner(t, sceneId);
+    const join = await joinProfile(t, sceneId);
     let threw = false;
     for (let i = 0; i < 60; i += 1) {
       try {
-        await owner(t).mutation(api.collab.pushElements, {
+        await profile(t).mutation(api.collab.pushElements, {
           sceneId,
           roomSessionId: join.roomSessionId,
           sessionSecret: join.sessionSecret,
@@ -459,17 +494,17 @@ describe("collab backend", () => {
       }),
     ).rejects.toThrow();
 
-    const join = await joinOwner(t, sceneId);
-    await owner(t).mutation(api.collab.pushElements, {
+    const join = await joinProfile(t, sceneId);
+    await profile(t).mutation(api.collab.pushElements, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
       elements: [el("a", 1, 1)],
     });
-    const [stored] = (await owner(t).query(api.collab.getRoomElements, {
+    const [stored] = (await profile(t).query(api.collab.getRoomElements, {
       sceneId,
     }))!;
-    const uncommitted = await owner(t).mutation(api.collab.markRoomSnapshot, {
+    const uncommitted = await profile(t).mutation(api.collab.markRoomSnapshot, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
@@ -482,7 +517,7 @@ describe("collab backend", () => {
       ctx.db.patch(sceneId, { contentHash: "current" }),
     );
     await expect(
-      owner(t).mutation(api.collab.markRoomSnapshot, {
+      profile(t).mutation(api.collab.markRoomSnapshot, {
         sceneId,
         roomSessionId: join.roomSessionId,
         sessionSecret: join.sessionSecret,
@@ -491,7 +526,7 @@ describe("collab backend", () => {
       }),
     ).rejects.toThrow();
 
-    const marked = await owner(t).mutation(api.collab.markRoomSnapshot, {
+    const marked = await profile(t).mutation(api.collab.markRoomSnapshot, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
@@ -530,7 +565,7 @@ describe("collab backend", () => {
       }),
     ).rejects.toThrow("Only the room starter can stop this room");
 
-    const view = await owner(t).query(api.collab.getRoomView, { sceneId });
+    const view = await profile(t).query(api.collab.getRoomView, { sceneId });
     expect(view.authorized).toBe(true);
     if (view.authorized) {
       expect(view.active).toBe(true);
@@ -541,8 +576,8 @@ describe("collab backend", () => {
     const t = setup();
     const sceneId = await seedScene(t);
     await startRoom(t, sceneId);
-    const join = await joinOwner(t, sceneId);
-    await owner(t).mutation(api.collab.pushElements, {
+    const join = await joinProfile(t, sceneId);
+    await profile(t).mutation(api.collab.pushElements, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
@@ -550,7 +585,7 @@ describe("collab backend", () => {
     });
 
     await expect(
-      owner(t).mutation(api.collab.stopRoom, {
+      profile(t).mutation(api.collab.stopRoom, {
         sceneId,
         roomSessionId: join.roomSessionId,
         sessionSecret: join.sessionSecret,
@@ -558,28 +593,28 @@ describe("collab backend", () => {
     ).rejects.toThrow("Room has unsaved changes");
 
     await t.run(async (ctx) => ctx.db.patch(sceneId, { contentHash: "clean" }));
-    await owner(t).mutation(api.collab.markRoomSnapshot, {
+    await profile(t).mutation(api.collab.markRoomSnapshot, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
       snapshotHash: "clean",
     });
-    await owner(t).mutation(api.collab.stopRoom, {
+    await profile(t).mutation(api.collab.stopRoom, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
     });
 
-    const view = await owner(t).query(api.collab.getRoomView, { sceneId });
+    const view = await profile(t).query(api.collab.getRoomView, { sceneId });
     expect(view.authorized).toBe(true);
     if (view.authorized) {
       expect(view.active).toBe(false);
       expect(view.canStart).toBe(true);
     }
     expect(
-      await owner(t).query(api.collab.getRoomElements, { sceneId }),
+      await profile(t).query(api.collab.getRoomElements, { sceneId }),
     ).toEqual([]);
-    await expect(joinOwner(t, sceneId)).rejects.toThrow(
+    await expect(joinProfile(t, sceneId)).rejects.toThrow(
       "Room has not been started",
     );
   });
@@ -588,15 +623,15 @@ describe("collab backend", () => {
     const t = setup();
     const sceneId = await seedScene(t);
     await startRoom(t, sceneId);
-    const join = await joinOwner(t, sceneId);
-    await owner(t).mutation(api.collab.pushElements, {
+    const join = await joinProfile(t, sceneId);
+    await profile(t).mutation(api.collab.pushElements, {
       sceneId,
       roomSessionId: join.roomSessionId,
       sessionSecret: join.sessionSecret,
       elements: [el("a", 1, 1)],
     });
 
-    await owner(t).mutation(api.library.deleteScene, { sceneId });
+    await profile(t).mutation(api.library.deleteScene, { sceneId });
 
     const leftovers = await t.run(async (ctx) => {
       const [rooms, elements, sessions, presence, limits] = await Promise.all([
@@ -636,29 +671,32 @@ describe("collab backend", () => {
     // Clean room: snapshot marked current, presence aged out -> collected.
     const cleanScene = await seedScene(t);
     await startRoom(t, cleanScene);
-    const cleanJoin = await joinOwner(t, cleanScene);
-    await owner(t).mutation(api.collab.pushElements, {
+    const cleanJoin = await joinProfile(t, cleanScene);
+    await profile(t).mutation(api.collab.pushElements, {
       sceneId: cleanScene,
       roomSessionId: cleanJoin.roomSessionId,
       sessionSecret: cleanJoin.sessionSecret,
       elements: [el("a", 1, 1)],
     });
     await t.run(async (ctx) => ctx.db.patch(cleanScene, { contentHash: "h" }));
-    await owner(t).mutation(api.collab.markRoomSnapshot, {
+    await profile(t).mutation(api.collab.markRoomSnapshot, {
       sceneId: cleanScene,
       roomSessionId: cleanJoin.roomSessionId,
       sessionSecret: cleanJoin.sessionSecret,
       snapshotHash: "h",
-      snapshotMaxUpdatedAt: (await owner(t).query(api.collab.getRoomElements, {
-        sceneId: cleanScene,
-      }))![0].updatedAt,
+      snapshotMaxUpdatedAt: (await profile(t).query(
+        api.collab.getRoomElements,
+        {
+          sceneId: cleanScene,
+        },
+      ))![0].updatedAt,
     });
 
     // Dirty room: never snapshotted.
     const dirtyScene = await seedScene(t);
     await startRoom(t, dirtyScene);
-    const dirtyJoin = await joinOwner(t, dirtyScene);
-    await owner(t).mutation(api.collab.pushElements, {
+    const dirtyJoin = await joinProfile(t, dirtyScene);
+    await profile(t).mutation(api.collab.pushElements, {
       sceneId: dirtyScene,
       roomSessionId: dirtyJoin.roomSessionId,
       sessionSecret: dirtyJoin.sessionSecret,
