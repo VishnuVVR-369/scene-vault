@@ -1,5 +1,5 @@
 // Networked end-to-end smoke test of the deployed collab backend.
-// Drives two anonymous "guest" clients (token-gated, no Clerk) against the real
+// Drives two anonymous "guest" clients (token-gated, no Better Auth) against the real
 // Convex deployment: join an already-started room -> push -> reconcile -> read,
 // plus presence.
 //

@@ -14,7 +14,7 @@ import { MarkerCircle, ScribbleUnderline, Wordmark } from "@/components/brand";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 
-const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+const hasRemoteAuth = Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
 /* -------------------------------------------------------------------------- */
 /*  Auth-aware calls to action                                                 */
@@ -30,7 +30,7 @@ function PrimaryCtaContent() {
 }
 
 function HeroCtas() {
-  if (!hasClerk) {
+  if (!hasRemoteAuth) {
     return (
       <Button asChild size="lg" className="h-11 px-5 text-base shadow-sketch">
         <Link href="/dashboard">
@@ -50,7 +50,7 @@ function HeroCtas() {
 }
 
 function NavAuthLinks() {
-  if (!hasClerk) {
+  if (!hasRemoteAuth) {
     return (
       <Button asChild size="sm" className="h-9 px-3.5">
         <Link href="/dashboard">Open app</Link>
@@ -448,8 +448,8 @@ export function LandingPage() {
                   variant="secondary"
                   className="h-11 px-6 text-base shadow-sketch-sm"
                 >
-                  <Link href={hasClerk ? "/sign-up" : "/dashboard"}>
-                    {hasClerk ? "Create your library" : "Open the app"}
+                  <Link href={hasRemoteAuth ? "/sign-up" : "/dashboard"}>
+                    {hasRemoteAuth ? "Create your library" : "Open the app"}
                     <ArrowRight />
                   </Link>
                 </Button>

@@ -1,7 +1,7 @@
-import { auth } from "@clerk/nextjs/server";
 import { fetchQuery } from "convex/nextjs";
 import { makeFunctionReference } from "convex/server";
 
+import { isAuthenticated } from "@/lib/auth-server";
 import { noStoreJson } from "@/lib/scene-storage-access";
 
 export type SharedSceneMode = "view" | "edit";
@@ -41,14 +41,13 @@ export async function requireSharedSceneAccess(
   const requireAuthForEdit = options.requireAuthForEdit ?? true;
   let userId: string | null = null;
   if (options.requireAuth) {
-    const authResult = await auth();
-    userId = authResult.userId;
-    if (!userId) {
+    if (!(await isAuthenticated())) {
       return {
         ok: false,
         response: noStoreJson({ error: "Unauthorized" }, { status: 401 }),
       };
     }
+    userId = "authenticated";
   }
 
   if (!process.env.NEXT_PUBLIC_CONVEX_URL) {
@@ -76,14 +75,13 @@ export async function requireSharedSceneAccess(
       };
     }
     if (requireAuthForEdit && access.mode === "edit" && !userId) {
-      const authResult = await auth();
-      userId = authResult.userId;
-      if (!userId) {
+      if (!(await isAuthenticated())) {
         return {
           ok: false,
           response: noStoreJson({ error: "Unauthorized" }, { status: 401 }),
         };
       }
+      userId = "authenticated";
     }
     return { ok: true, userId, access };
   } catch {

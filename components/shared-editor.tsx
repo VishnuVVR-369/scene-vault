@@ -1,6 +1,5 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
 import { ArrowLeft, Copy, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -34,6 +33,7 @@ import {
   uploadThumbnailViaSignedUrl,
 } from "@/lib/scene-transport";
 import { useTheme } from "@/components/theme-provider";
+import { useAuthUser } from "@/lib/use-auth-user";
 
 type SharedEditorMode = "view" | "edit";
 
@@ -45,7 +45,7 @@ export function SharedEditor({
   mode: SharedEditorMode;
 }) {
   const router = useRouter();
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn } = useAuthUser();
   const { resolvedTheme } = useTheme();
   const [metadata, setMetadata] = useState<SharedSceneMetadata | null>(null);
   const [bundle, setBundle] = useState<SceneBundle | null>(null);

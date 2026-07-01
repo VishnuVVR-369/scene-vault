@@ -306,7 +306,7 @@ const FEATURES = [
 const STACK = [
   {
     name: "Next.js 16",
-    role: "App Router, route handlers, middleware",
+    role: "App Router, route handlers, proxy",
     color: "var(--chart-1)",
   },
   {
@@ -320,7 +320,7 @@ const STACK = [
     color: "var(--chart-2)",
   },
   {
-    name: "Clerk",
+    name: "Better Auth",
     role: "Authentication & session management",
     color: "var(--chart-3)",
   },
@@ -439,14 +439,14 @@ const DATA_FLOWS = [
 const TRUST_LAYERS = [
   {
     icon: ShieldCheck,
-    title: "Edge — Clerk middleware",
-    body: "proxy.ts gates /dashboard, /scenes, and /api/scenes. /share/e is deliberately public so guests can join an edit room by token. In local demo mode the middleware short-circuits entirely.",
+    title: "Edge — Better Auth proxy",
+    body: "proxy.ts gates /dashboard, /scenes, and /api/scenes by checking for a Better Auth session cookie. /share/e is deliberately public so guests can join an edit room by token. In local demo mode the proxy short-circuits entirely.",
     accent: "var(--chart-1)",
   },
   {
     icon: KeyRound,
     title: "Route handler — server-derived identity",
-    body: "Each storage route re-derives the Clerk userId server-side, mints a fresh Convex JWT, and asks Convex who owns the scene. The owner id used to build the R2 key comes back from Convex — never from the request.",
+    body: "Each storage route re-derives the Better Auth user ID server-side, mints a fresh Convex JWT, and asks Convex who owns the scene. The owner id used to build the R2 key comes back from Convex — never from the request.",
     accent: "var(--chart-3)",
   },
   {
@@ -792,13 +792,13 @@ export function DocsPage() {
             </Lead>
             <p>
               It is a single Next.js App Router application that stitches
-              together four services: <Code>Clerk</Code> for authentication,{" "}
-              <Code>Convex</Code> as a reactive metadata database,{" "}
-              <Code>Cloudflare R2</Code> for scene-bundle storage, and the
-              embedded <Code>@excalidraw/excalidraw</Code> editor. The guiding
-              principle is a clean split: scene <em>metadata</em> (titles,
-              folders, versions, object keys, content hashes) lives in Convex
-              and is strongly consistent and reactive; the heavy scene{" "}
+              together four services: <Code>Better Auth</Code> for
+              authentication, <Code>Convex</Code> as a reactive metadata
+              database, <Code>Cloudflare R2</Code> for scene-bundle storage, and
+              the embedded <Code>@excalidraw/excalidraw</Code> editor. The
+              guiding principle is a clean split: scene <em>metadata</em>{" "}
+              (titles, folders, versions, object keys, content hashes) lives in
+              Convex and is strongly consistent and reactive; the heavy scene{" "}
               <em>bundles</em> live in R2 and are accessed only through
               short-lived presigned URLs that never touch the Next.js server.
             </p>
@@ -824,8 +824,8 @@ export function DocsPage() {
             <Lead>
               The fastest way to try SceneVault is{" "}
               <strong className="text-foreground">local demo mode</strong>,
-              which needs no Clerk, Convex, or R2 credentials. Scenes are stored
-              in your browser&apos;s <Code>localStorage</Code>.
+              which needs no Better Auth, Convex, or R2 credentials. Scenes are
+              stored in your browser&apos;s <Code>localStorage</Code>.
             </Lead>
             <CodeBlock
               language="bash"
@@ -839,7 +839,7 @@ NEXT_PUBLIC_LOCAL_DATA=1 pnpm dev
 open http://localhost:3000/dashboard`}
             />
             <Callout variant="tip" title="No sign-in required">
-              In demo mode Clerk middleware is bypassed and the dashboard loads
+              In demo mode Better Auth proxy is bypassed and the dashboard loads
               straight away. It is also the mode the end-to-end Playwright suite
               runs against. Live collaboration needs Convex, so it is only
               available in the full stack.
@@ -889,7 +889,8 @@ open http://localhost:3000/dashboard`}
           <Section id="stack" eyebrow="Architecture" title="Tech stack">
             <Lead>
               A small, modern stack where each service owns one job. Convex
-              holds reactive metadata; R2 holds bytes; Clerk holds identity.
+              holds reactive metadata; R2 holds bytes; Better Auth holds
+              identity.
             </Lead>
             <div className="grid gap-3 sm:grid-cols-2">
               {STACK.map(({ name, role, color }) => (
@@ -1156,16 +1157,17 @@ users/{ownerId}/scenes/{sceneId}/head/thumbnail.png     # PNG preview`}
             </div>
             <CodeBlock
               language="ts"
-              filename="proxy.ts (middleware)"
-              code={`const isProtectedRoute = createRouteMatcher([
-  "/dashboard(.*)",
-  "/scenes(.*)",
-  "/api/scenes(.*)",
-]);
+              filename="proxy.ts (auth gate)"
+              code={`const protectedPrefixes = ["/dashboard", "/scenes", "/api/scenes"];
 
-export default clerkMiddleware(async (auth, req) => {
-  if (!hasClerk || process.env.NEXT_PUBLIC_LOCAL_DATA === "1") return;
-  if (isProtectedRoute(req)) await auth.protect();
+export default function proxy(req: NextRequest) {
+  if (process.env.NEXT_PUBLIC_LOCAL_DATA === "1") return;
+  const signedIn = req.cookies
+    .getAll()
+    .some((cookie) => cookie.name.includes("session_token"));
+  if (isProtectedPath(req.nextUrl.pathname) && !signedIn) {
+    return NextResponse.redirect(new URL("/sign-in", req.url));
+  }
 });`}
             />
             <p>
@@ -1217,10 +1219,10 @@ export default clerkMiddleware(async (auth, req) => {
               Anonymous guests can load the scene and join live editing with an
               edit token, but durable R2 persistence still requires sign-in: the
               upload, commit, thumbnail-upload, and duplicate routes demand a
-              Clerk session. A guest who duplicates a shared scene gets a fresh
-              copy under their <em>own</em> owner namespace. The token grants
-              entry to the room; it never grants direct write access to someone
-              else&apos;s storage.
+              Better Auth session. A guest who duplicates a shared scene gets a
+              fresh copy under their <em>own</em> owner namespace. The token
+              grants entry to the room; it never grants direct write access to
+              someone else&apos;s storage.
             </p>
           </Section>
 
@@ -1386,12 +1388,12 @@ export default clerkMiddleware(async (auth, req) => {
             <p>
               The switch is the exported <Code>shouldUseRemoteData</Code> flag:
               remote mode is on only when <Code>NEXT_PUBLIC_LOCAL_DATA</Code> is
-              not <Code>1</Code> <em>and</em> both the Convex URL and Clerk
-              publishable key are present. In local mode the library provider
-              reads and writes <Code>localStorage</Code>, renders thumbnails as
-              inline PNG data URLs, and the middleware short-circuits — so the
-              Playwright suite runs the full UI with zero external services.
-              Live collaboration depends on Convex and is therefore remote-only.
+              not <Code>1</Code> <em>and</em> the Convex URL is present. In
+              local mode the library provider reads and writes{" "}
+              <Code>localStorage</Code>, renders thumbnails as inline PNG data
+              URLs, and the auth proxy short-circuits — so the Playwright suite
+              runs the full UI with zero external services. Live collaboration
+              depends on Convex and is therefore remote-only.
             </p>
             <SubHeading>Running the full stack locally</SubHeading>
             <p>
@@ -1424,11 +1426,21 @@ pnpm dev`}
                 <>
                   Copy <Code>.env.example</Code> to <Code>.env.local</Code>.
                 </>,
-                <>Fill in your Clerk keys and sign-in / sign-up URLs.</>,
                 <>
-                  Link Convex with <Code>pnpm exec convex dev</Code>, then set{" "}
-                  <Code>NEXT_PUBLIC_CONVEX_URL</Code> and{" "}
-                  <Code>CLERK_FRONTEND_API_URL</Code>.
+                  Link and push Convex with{" "}
+                  <Code>pnpm exec convex dev --once</Code>.
+                </>,
+                <>
+                  In <Code>.env.local</Code>, set <Code>CONVEX_DEPLOYMENT</Code>{" "}
+                  plus <Code>NEXT_PUBLIC_CONVEX_URL</Code>,{" "}
+                  <Code>CONVEX_SITE_URL</Code>,{" "}
+                  <Code>NEXT_PUBLIC_CONVEX_SITE_URL</Code>, and{" "}
+                  <Code>SITE_URL</Code> or <Code>BETTER_AUTH_URL</Code>.
+                </>,
+                <>
+                  In Convex env, set <Code>SITE_URL</Code> or{" "}
+                  <Code>BETTER_AUTH_URL</Code>, <Code>BETTER_AUTH_SECRET</Code>,
+                  and Google/GitHub OAuth credentials.
                 </>,
                 <>
                   Create an R2 bucket and S3 API token, then fill the{" "}
@@ -1453,10 +1465,35 @@ pnpm dev`}
               ))}
             </ol>
             <Callout variant="warn" title="Run Convex dev before deploying">
-              The Convex <Code>_generated</Code> files are not created until the
-              project is linked. Run <Code>pnpm exec convex dev</Code> before
-              deploying the backend or the build will fail.
+              The Convex <Code>_generated</Code> files and HTTP actions are not
+              created until the project is linked and pushed. Run{" "}
+              <Code>pnpm exec convex dev --once</Code> before deploying the
+              backend. If <Code>/api/auth/*</Code> returns the Convex HTTP
+              actions 404, this is the missing step.
             </Callout>
+            <SubHeading>OAuth callbacks</SubHeading>
+            <p>
+              Better Auth handles all current sign-in and session state. GitHub
+              and Google should redirect back to the Next.js app, where{" "}
+              <Code>app/api/auth/[...all]/route.ts</Code> forwards the request
+              to Convex.
+            </p>
+            <CodeBlock
+              language="text"
+              filename="Provider callback URLs"
+              code={`GitHub local callback: http://localhost:3000/api/auth/callback/github
+Google local callback: http://localhost:3000/api/auth/callback/google
+
+GitHub production callback: https://your-domain.com/api/auth/callback/github
+Google production callback: https://your-domain.com/api/auth/callback/google`}
+            />
+            <p>
+              Store <Code>SITE_URL</Code> or <Code>BETTER_AUTH_URL</Code>,{" "}
+              <Code>BETTER_AUTH_SECRET</Code>, and the Google/GitHub client
+              credentials in Convex env. Keeping them only in{" "}
+              <Code>.env.local</Code> is not enough because Convex executes the
+              Better Auth handler.
+            </p>
           </Section>
 
           {/* Structure */}
@@ -1696,7 +1733,7 @@ function ArchitectureDiagram() {
     {
       icon: KeyRound,
       plane: "Identity",
-      title: "Clerk",
+      title: "Better Auth",
       sub: "Sessions & Convex JWTs",
       channel: "identity · JWT",
       color: "var(--chart-3)",
@@ -1788,7 +1825,8 @@ function ArchitectureDiagram() {
       </div>
       <p className="mt-4 flex items-center justify-center gap-2 text-center font-mono text-[11px] text-muted-foreground">
         <TerminalSquare className="size-3.5" />
-        metadata via Convex · bytes via presigned R2 URLs · identity via Clerk
+        metadata via Convex · bytes via presigned R2 URLs · identity via Better
+        Auth
       </p>
     </div>
   );
@@ -1969,7 +2007,7 @@ function ModeComparison() {
       local: "Browser localStorage",
       remote: "Convex + Cloudflare R2",
     },
-    { aspect: "Auth", local: "Bypassed", remote: "Clerk sessions" },
+    { aspect: "Auth", local: "Bypassed", remote: "Better Auth sessions" },
     {
       aspect: "Thumbnails",
       local: "Inline PNG data URLs",
@@ -1983,7 +2021,7 @@ function ModeComparison() {
     {
       aspect: "Credentials",
       local: "None required",
-      remote: "Clerk · Convex · R2",
+      remote: "Better Auth · Convex · R2",
     },
   ];
   return (
@@ -2031,24 +2069,9 @@ function ModeComparison() {
 function EnvTable() {
   const rows: { name: string; required: boolean; desc: string }[] = [
     {
-      name: "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+      name: "CONVEX_DEPLOYMENT",
       required: true,
-      desc: "Clerk publishable key (client).",
-    },
-    {
-      name: "CLERK_SECRET_KEY",
-      required: true,
-      desc: "Clerk secret key (server).",
-    },
-    {
-      name: "NEXT_PUBLIC_CLERK_SIGN_IN_URL",
-      required: false,
-      desc: "Sign-in route, defaults to /sign-in.",
-    },
-    {
-      name: "NEXT_PUBLIC_CLERK_SIGN_UP_URL",
-      required: false,
-      desc: "Sign-up route, defaults to /sign-up.",
+      desc: "Convex deployment selected by the CLI.",
     },
     {
       name: "NEXT_PUBLIC_CONVEX_URL",
@@ -2056,9 +2079,49 @@ function EnvTable() {
       desc: "Convex deployment URL.",
     },
     {
-      name: "CLERK_FRONTEND_API_URL",
+      name: "CONVEX_SITE_URL",
       required: true,
-      desc: "Clerk frontend API URL for Convex auth.",
+      desc: "Server-side Convex site URL used by the auth proxy.",
+    },
+    {
+      name: "NEXT_PUBLIC_CONVEX_SITE_URL",
+      required: true,
+      desc: "Convex site URL for Better Auth.",
+    },
+    {
+      name: "SITE_URL",
+      required: true,
+      desc: "Public app URL used by Better Auth callbacks.",
+    },
+    {
+      name: "BETTER_AUTH_URL",
+      required: false,
+      desc: "Alternative to SITE_URL using Better Auth's standard env name.",
+    },
+    {
+      name: "BETTER_AUTH_SECRET",
+      required: true,
+      desc: "Better Auth secret key (server).",
+    },
+    {
+      name: "GITHUB_CLIENT_ID",
+      required: true,
+      desc: "GitHub OAuth client ID.",
+    },
+    {
+      name: "GITHUB_CLIENT_SECRET",
+      required: true,
+      desc: "GitHub OAuth client secret.",
+    },
+    {
+      name: "GOOGLE_CLIENT_ID",
+      required: true,
+      desc: "Google OAuth client ID.",
+    },
+    {
+      name: "GOOGLE_CLIENT_SECRET",
+      required: true,
+      desc: "Google OAuth client secret.",
     },
     {
       name: "CLOUDFLARE_R2_ACCOUNT_ID",

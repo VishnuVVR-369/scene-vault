@@ -1,6 +1,5 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
 import { useEffect, useMemo, useState } from "react";
 
 import { LogoMark } from "@/components/brand";
@@ -14,6 +13,7 @@ import {
   type CollabIdentity,
 } from "@/lib/collab/identity";
 import type { SceneBundle } from "@/lib/domain";
+import { useAuthUser } from "@/lib/use-auth-user";
 
 import type { BinaryFileData } from "@excalidraw/excalidraw/types";
 
@@ -30,7 +30,7 @@ type CollaborativeCanvasProps = {
 };
 
 export function CollaborativeCanvas(props: CollaborativeCanvasProps) {
-  const { user, isSignedIn } = useUser();
+  const { user, isSignedIn } = useAuthUser();
   const onStopped = props.onStopped;
   const [guest, setGuest] = useState<CollabIdentity>(() => loadGuestIdentity());
   const [stopping, setStopping] = useState(false);
@@ -39,7 +39,7 @@ export function CollaborativeCanvas(props: CollaborativeCanvasProps) {
   const identity: CollabIdentity = useMemo(() => {
     if (isSignedIn && user) {
       return {
-        name: user.fullName ?? user.firstName ?? user.username ?? "You",
+        name: user.name,
         color: colorForId(user.id),
       };
     }

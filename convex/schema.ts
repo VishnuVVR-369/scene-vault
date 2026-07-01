@@ -1,7 +1,22 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+import { tables as betterAuthTables } from "./betterAuth/schema";
+
 export default defineSchema({
+  ...betterAuthTables,
+
+  userOwnerAliases: defineTable({
+    authUserId: v.string(),
+    ownerId: v.string(),
+    source: v.union(v.literal("legacy-clerk"), v.literal("manual")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_auth_user", ["authUserId"])
+    .index("by_owner", ["ownerId"])
+    .index("by_pair", ["authUserId", "ownerId"]),
+
   folders: defineTable({
     ownerId: v.string(),
     name: v.string(),

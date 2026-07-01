@@ -8,11 +8,13 @@
  * @module
  */
 
+import type * as betterAuth_auth from "../betterAuth/auth.js";
 import type * as collab from "../collab.js";
 import type * as collabAuth from "../collabAuth.js";
 import type * as collabDb from "../collabDb.js";
 import type * as collabLogic from "../collabLogic.js";
 import type * as crons from "../crons.js";
+import type * as http from "../http.js";
 import type * as library from "../library.js";
 import type * as testSeed from "../testSeed.js";
 import type * as validation from "../validation.js";
@@ -24,11 +26,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "betterAuth/auth": typeof betterAuth_auth;
   collab: typeof collab;
   collabAuth: typeof collabAuth;
   collabDb: typeof collabDb;
   collabLogic: typeof collabLogic;
   crons: typeof crons;
+  http: typeof http;
   library: typeof library;
   testSeed: typeof testSeed;
   validation: typeof validation;
@@ -60,4 +64,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  betterAuth: import("@convex-dev/better-auth/_generated/component.js").ComponentApi<"betterAuth">;
+};

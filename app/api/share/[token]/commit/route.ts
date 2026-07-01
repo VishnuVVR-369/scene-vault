@@ -1,8 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
 import { fetchMutation } from "convex/nextjs";
 import { makeFunctionReference } from "convex/server";
 import { z } from "zod";
 
+import { getConvexAuthToken } from "@/lib/auth-server";
 import { noStoreJson, parseJsonBody } from "@/lib/scene-storage-access";
 import {
   referrerSafeHeaders,
@@ -54,8 +54,7 @@ export async function POST(request: Request, ctx: ShareRouteContext) {
   }
   const body = bodyResult.data;
 
-  const { getToken } = await auth();
-  const convexToken = await getToken({ template: "convex" });
+  const convexToken = await getConvexAuthToken();
   if (!convexToken) {
     return noStoreJson(
       { error: "Storage authorization is not available" },

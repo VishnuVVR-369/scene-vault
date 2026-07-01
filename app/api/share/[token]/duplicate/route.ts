@@ -1,7 +1,7 @@
-import { auth } from "@clerk/nextjs/server";
-import { fetchMutation } from "convex/nextjs";
+import { fetchMutation, fetchQuery } from "convex/nextjs";
 import { makeFunctionReference } from "convex/server";
 
+import { getConvexAuthToken } from "@/lib/auth-server";
 import { copySceneObject, copySceneThumbnailObject } from "@/lib/r2";
 import { noStoreJson } from "@/lib/scene-storage-access";
 import {
@@ -18,6 +18,12 @@ const createScene = makeFunctionReference<
   { title: string; folderId: string | null },
   string
 >("library:createScene");
+
+const getCurrentStorageOwnerId = makeFunctionReference<
+  "query",
+  Record<string, never>,
+  string
+>("library:getCurrentStorageOwnerId");
 
 const commitSceneSave = makeFunctionReference<
   "mutation",
@@ -41,13 +47,7 @@ export async function POST(_request: Request, ctx: ShareRouteContext) {
   if (!accessResult.ok) {
     return accessResult.response;
   }
-  const userId = accessResult.userId;
-  if (!userId) {
-    return noStoreJson({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const { getToken } = await auth();
-  const convexToken = await getToken({ template: "convex" });
+  const convexToken = await getConvexAuthToken();
   if (!convexToken) {
     return noStoreJson(
       { error: "Storage authorization is not available" },
@@ -56,6 +56,11 @@ export async function POST(_request: Request, ctx: ShareRouteContext) {
   }
 
   const source = accessResult.access;
+  const targetOwnerId = await fetchQuery(
+    getCurrentStorageOwnerId,
+    {},
+    { token: convexToken },
+  );
   const sceneId = await fetchMutation(
     createScene,
     { title: `${source.title} copy`, folderId: null },
@@ -72,14 +77,14 @@ export async function POST(_request: Request, ctx: ShareRouteContext) {
     const copiedScene = await copySceneObject({
       sourceOwnerId: source.storageOwnerId,
       sourceSceneId: source.sceneId,
-      targetOwnerId: userId,
+      targetOwnerId,
       targetSceneId: sceneId,
     });
     const copiedThumbnail = source.thumbnailObjectKey
       ? await copySceneThumbnailObject({
           sourceOwnerId: source.storageOwnerId,
           sourceSceneId: source.sceneId,
-          targetOwnerId: userId,
+          targetOwnerId,
           targetSceneId: sceneId,
         })
       : null;

@@ -1,7 +1,7 @@
 import { colorForId, guestNameForId } from "./colors";
 
-// Collaborator identity. Signed-in users derive name/color from Clerk; guests
-// get a per-tab seed (sessionStorage) and an editable name/color (localStorage).
+// Collaborator identity. Signed-in users derive name/color from auth; guests get
+// a per-tab seed (sessionStorage) and an editable name/color (localStorage).
 
 export type CollabIdentity = { name: string; color: string };
 

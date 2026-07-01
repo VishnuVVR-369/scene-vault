@@ -1,19 +1,20 @@
 "use client";
 
-import { ClerkProvider, useAuth } from "@clerk/nextjs";
+import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
+import type { AuthClient } from "@convex-dev/better-auth/react";
 import { ConvexReactClient } from "convex/react";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { type ReactNode, useMemo } from "react";
 
 import { ToastProvider } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { authClient } from "@/lib/auth-client";
 
-const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+const betterAuthClient = authClient as unknown as AuthClient;
 
 function ConvexBoundary({ children }: { children: ReactNode }) {
   const convex = useMemo(() => {
-    if (!convexUrl || !hasClerk) {
+    if (!convexUrl || process.env.NEXT_PUBLIC_LOCAL_DATA === "1") {
       return null;
     }
     return new ConvexReactClient(convexUrl);
@@ -24,9 +25,9 @@ function ConvexBoundary({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+    <ConvexBetterAuthProvider client={convex} authClient={betterAuthClient}>
       {children}
-    </ConvexProviderWithClerk>
+    </ConvexBetterAuthProvider>
   );
 }
 
@@ -39,9 +40,5 @@ export function AppProviders({ children }: { children: ReactNode }) {
     </TooltipProvider>
   );
 
-  if (!hasClerk) {
-    return content;
-  }
-
-  return <ClerkProvider>{content}</ClerkProvider>;
+  return content;
 }

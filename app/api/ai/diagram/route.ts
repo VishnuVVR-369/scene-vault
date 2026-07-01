@@ -1,5 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
-
 import {
   aiDiagramJsonSchema,
   aiDiagramRequestSchema,
@@ -9,6 +7,7 @@ import {
   extractOpenAiOutputText,
   parseAiDiagramResponse,
 } from "@/lib/ai-diagram";
+import { isAuthenticated } from "@/lib/auth-server";
 import { noStoreJson, parseJsonBody } from "@/lib/scene-storage-access";
 
 export const runtime = "nodejs";
@@ -17,18 +16,14 @@ const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 
 const shouldRequireAuth =
   process.env.NEXT_PUBLIC_LOCAL_DATA !== "1" &&
-  Boolean(
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
-    process.env.CLERK_SECRET_KEY,
-  );
+  Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
 async function requireAiAccess() {
   if (!shouldRequireAuth) {
     return null;
   }
 
-  const { userId } = await auth();
-  if (!userId) {
+  if (!(await isAuthenticated())) {
     return noStoreJson({ error: "Unauthorized" }, { status: 401 });
   }
 

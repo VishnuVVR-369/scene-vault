@@ -23,10 +23,7 @@ type SceneShares = {
 
 const canUseRemoteSharing =
   process.env.NEXT_PUBLIC_LOCAL_DATA !== "1" &&
-  Boolean(
-    process.env.NEXT_PUBLIC_CONVEX_URL &&
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
-  );
+  Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
 const refs = {
   getSharesForScene: makeFunctionReference<
@@ -63,8 +60,8 @@ export function ShareSceneDialog({
             <DialogTitle className="font-display">Share scene</DialogTitle>
           </DialogHeader>
           <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-            Sharing needs Clerk, Convex, and R2 remote mode. Local demo scenes
-            stay inside this browser.
+            Sharing needs Better Auth, Convex, and R2 remote mode. Local demo
+            scenes stay inside this browser.
           </div>
         </DialogContent>
       </Dialog>

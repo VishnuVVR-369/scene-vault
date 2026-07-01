@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Live-collaboration e2e: runs the app in REMOTE mode (real Convex/Clerk/R2 from
+// Live-collaboration e2e: runs the app in REMOTE mode (real Convex/Better Auth/R2 from
 // .env.local) and drives two guest browser contexts against a seeded edit-share
 // room. Kept separate from the default config, which runs in local-data mode.
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 3100);

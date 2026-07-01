@@ -23,6 +23,7 @@ import {
 import type { Doc, Id } from "./_generated/dataModel";
 
 async function requireOwnerId(ctx: {
+  db: DatabaseReader;
   auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
 }) {
   const identity = await ctx.auth.getUserIdentity();
@@ -32,15 +33,34 @@ async function requireOwnerId(ctx: {
   return identity.subject;
 }
 
+async function requireOwnerContext(ctx: {
+  db: DatabaseReader;
+  auth: { getUserIdentity: () => Promise<{ subject: string } | null> };
+}) {
+  const primaryOwnerId = await requireOwnerId(ctx);
+  const aliases = await ctx.db
+    .query("userOwnerAliases")
+    .withIndex("by_auth_user", (q) => q.eq("authUserId", primaryOwnerId))
+    .collect();
+  const ownerIds = Array.from(
+    new Set([primaryOwnerId, ...aliases.map((alias) => alias.ownerId)]),
+  );
+  return { primaryOwnerId, ownerIds };
+}
+
+function owns(ownerIds: string[], ownerId: string) {
+  return ownerIds.includes(ownerId);
+}
+
 // Fetch a scene the caller owns, or throw. Ownership failures are reported as
 // "not found" so we never reveal that another user's scene exists.
 async function requireOwnedScene(
   db: DatabaseReader,
   sceneId: Id<"scenes">,
-  ownerId: string,
+  ownerIds: string[],
 ) {
   const scene = await db.get(sceneId);
-  if (!scene || scene.ownerId !== ownerId) {
+  if (!scene || !owns(ownerIds, scene.ownerId)) {
     throw new Error("Scene not found");
   }
   return scene;
@@ -52,14 +72,38 @@ async function requireOwnedScene(
 async function requireOwnedFolder(
   db: DatabaseReader,
   folderId: Id<"folders">,
-  ownerId: string,
+  ownerIds: string[],
   errorMessage = "Folder not found",
 ) {
   const folder = await db.get(folderId);
-  if (!folder || folder.ownerId !== ownerId) {
+  if (!folder || !owns(ownerIds, folder.ownerId)) {
     throw new Error(errorMessage);
   }
   return folder;
+}
+
+async function collectFoldersForOwnerIds(db: DatabaseReader, ownerIds: string[]) {
+  const folders = await Promise.all(
+    ownerIds.map((ownerId) =>
+      db
+        .query("folders")
+        .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+        .collect(),
+    ),
+  );
+  return folders.flat();
+}
+
+async function collectScenesForOwnerIds(db: DatabaseReader, ownerIds: string[]) {
+  const scenes = await Promise.all(
+    ownerIds.map((ownerId) =>
+      db
+        .query("scenes")
+        .withIndex("by_owner_updated", (q) => q.eq("ownerId", ownerId))
+        .collect(),
+    ),
+  );
+  return scenes.flat();
 }
 
 function buildSceneObjectKey(ownerId: string, sceneId: string) {
@@ -175,16 +219,10 @@ async function getShareSceneByToken(db: DatabaseReader, token: string) {
 export const getLibrary = query({
   args: {},
   handler: async (ctx) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     const [folders, scenes] = await Promise.all([
-      ctx.db
-        .query("folders")
-        .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
-        .collect(),
-      ctx.db
-        .query("scenes")
-        .withIndex("by_owner_updated", (q) => q.eq("ownerId", ownerId))
-        .collect(),
+      collectFoldersForOwnerIds(ctx.db, ownerIds),
+      collectScenesForOwnerIds(ctx.db, ownerIds),
     ]);
     return { folders, scenes };
   },
@@ -193,9 +231,9 @@ export const getLibrary = query({
 export const getSceneStorageAccess = query({
   args: { sceneId: v.id("scenes") },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     const scene = await ctx.db.get(args.sceneId);
-    if (!scene || scene.ownerId !== ownerId) {
+    if (!scene || !owns(ownerIds, scene.ownerId)) {
       return null;
     }
     return {
@@ -209,9 +247,9 @@ export const getSceneStorageAccess = query({
 export const getSharesForScene = query({
   args: { sceneId: v.id("scenes") },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     sceneShareArgsSchema.parse({ sceneId: args.sceneId, mode: "view" });
-    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
+    await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
     const [viewShare, editShare] = await Promise.all([
       ctx.db
         .query("sceneShares")
@@ -245,15 +283,55 @@ export const getSharesForScene = query({
   },
 });
 
+export const getCurrentStorageOwnerId = query({
+  args: {},
+  handler: async (ctx) => {
+    const { primaryOwnerId } = await requireOwnerContext(ctx);
+    return primaryOwnerId;
+  },
+});
+
+export const linkLegacyOwner = mutation({
+  args: {
+    authUserId: v.string(),
+    legacyOwnerId: v.string(),
+    secret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const configuredSecret = process.env.LEGACY_OWNER_LINK_SECRET;
+    if (!configuredSecret || args.secret !== configuredSecret) {
+      throw new Error("Not authorized");
+    }
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("userOwnerAliases")
+      .withIndex("by_pair", (q) =>
+        q.eq("authUserId", args.authUserId).eq("ownerId", args.legacyOwnerId),
+      )
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, { updatedAt: now });
+      return existing._id;
+    }
+    return await ctx.db.insert("userOwnerAliases", {
+      authUserId: args.authUserId,
+      ownerId: args.legacyOwnerId,
+      source: "legacy-clerk",
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
 export const createOrRotateShare = mutation({
   args: {
     sceneId: v.id("scenes"),
     mode: v.union(v.literal("view"), v.literal("edit")),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     const input = sceneShareArgsSchema.parse(args);
-    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
     const token = await generateUniqueShareToken(ctx.db);
     const now = Date.now();
     const existing = await ctx.db
@@ -272,7 +350,7 @@ export const createOrRotateShare = mutation({
     }
     await ctx.db.insert("sceneShares", {
       sceneId: args.sceneId,
-      ownerId,
+      ownerId: scene.ownerId,
       mode: input.mode,
       token,
       enabled: true,
@@ -290,9 +368,9 @@ export const setShareEnabled = mutation({
     enabled: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     const input = setSceneShareEnabledArgsSchema.parse(args);
-    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
+    await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
     const existing = await ctx.db
       .query("sceneShares")
       .withIndex("by_scene_mode", (q) =>
@@ -344,19 +422,26 @@ export const createFolder = mutation({
     parentFolderId: v.union(v.id("folders"), v.null()),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { primaryOwnerId, ownerIds } = await requireOwnerContext(ctx);
     const input = createFolderArgsSchema.parse(args);
     if (args.parentFolderId) {
-      await requireOwnedFolder(
+      const parent = await requireOwnedFolder(
         ctx.db,
         args.parentFolderId,
-        ownerId,
+        ownerIds,
         "Parent folder not found",
       );
+      return await ctx.db.insert("folders", {
+        ownerId: parent.ownerId,
+        name: input.name,
+        parentFolderId: args.parentFolderId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
     }
     const now = Date.now();
     return await ctx.db.insert("folders", {
-      ownerId,
+      ownerId: primaryOwnerId,
       name: input.name,
       parentFolderId: args.parentFolderId,
       createdAt: now,
@@ -371,9 +456,9 @@ export const renameFolder = mutation({
     name: v.string(),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     const input = renameFolderArgsSchema.parse(args);
-    await requireOwnedFolder(ctx.db, args.folderId, ownerId);
+    await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
     await ctx.db.patch(args.folderId, {
       name: input.name,
       updatedAt: Date.now(),
@@ -387,9 +472,9 @@ export const moveFolder = mutation({
     parentFolderId: v.union(v.id("folders"), v.null()),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     moveFolderArgsSchema.parse(args);
-    await requireOwnedFolder(ctx.db, args.folderId, ownerId);
+    const folder = await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
     if (args.parentFolderId === args.folderId) {
       throw new Error("A folder cannot be moved into itself.");
     }
@@ -397,12 +482,15 @@ export const moveFolder = mutation({
       const parent = await requireOwnedFolder(
         ctx.db,
         args.parentFolderId,
-        ownerId,
+        ownerIds,
         "Parent folder not found",
       );
+      if (parent.ownerId !== folder.ownerId) {
+        throw new Error("Parent folder not found");
+      }
       const allFolders = await ctx.db
         .query("folders")
-        .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+        .withIndex("by_owner", (q) => q.eq("ownerId", folder.ownerId))
         .collect();
       let cursor = parent.parentFolderId;
       while (cursor) {
@@ -426,12 +514,12 @@ export const moveFolder = mutation({
 export const deleteFolder = mutation({
   args: { folderId: v.id("folders") },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     idArgsSchema.parse({ id: args.folderId });
-    await requireOwnedFolder(ctx.db, args.folderId, ownerId);
+    const folder = await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
     const allFolders = await ctx.db
       .query("folders")
-      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_owner", (q) => q.eq("ownerId", folder.ownerId))
       .collect();
     const folderIds = new Set<typeof args.folderId>([args.folderId]);
     let changed = true;
@@ -451,7 +539,7 @@ export const deleteFolder = mutation({
     }
     const scenes = await ctx.db
       .query("scenes")
-      .withIndex("by_owner_updated", (q) => q.eq("ownerId", ownerId))
+      .withIndex("by_owner_updated", (q) => q.eq("ownerId", folder.ownerId))
       .collect();
     for (const scene of scenes) {
       if (scene.folderId && folderIds.has(scene.folderId)) {
@@ -472,10 +560,12 @@ export const createScene = mutation({
     folderId: v.union(v.id("folders"), v.null()),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { primaryOwnerId, ownerIds } = await requireOwnerContext(ctx);
     const input = createSceneArgsSchema.parse(args);
+    let ownerId = primaryOwnerId;
     if (args.folderId) {
-      await requireOwnedFolder(ctx.db, args.folderId, ownerId);
+      const folder = await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
+      ownerId = folder.ownerId;
     }
     const now = Date.now();
     return await ctx.db.insert("scenes", {
@@ -503,11 +593,14 @@ export const updateScene = mutation({
     pinned: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     const input = updateSceneArgsSchema.parse(args);
-    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
     if (args.folderId) {
-      await requireOwnedFolder(ctx.db, args.folderId, ownerId);
+      const folder = await requireOwnedFolder(ctx.db, args.folderId, ownerIds);
+      if (folder.ownerId !== scene.ownerId) {
+        throw new Error("Folder not found");
+      }
     }
     await ctx.db.patch(args.sceneId, {
       ...(input.title === undefined ? {} : { title: input.title }),
@@ -521,9 +614,9 @@ export const updateScene = mutation({
 export const deleteScene = mutation({
   args: { sceneId: v.id("scenes") },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     idArgsSchema.parse({ id: args.sceneId });
-    await requireOwnedScene(ctx.db, args.sceneId, ownerId);
+    await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
     await deleteSharesForScene(ctx.db, args.sceneId);
     await deleteCollabRowsForScene(ctx.db, args.sceneId);
     await ctx.db.delete(args.sceneId);
@@ -533,12 +626,12 @@ export const deleteScene = mutation({
 export const duplicateScene = mutation({
   args: { sceneId: v.id("scenes") },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     idArgsSchema.parse({ id: args.sceneId });
-    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerId);
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
     const now = Date.now();
     return await ctx.db.insert("scenes", {
-      ownerId,
+      ownerId: scene.ownerId,
       title: `${scene.title} copy`,
       folderId: scene.folderId,
       version: 0,
@@ -562,10 +655,10 @@ export const commitSceneSave = mutation({
     thumbnailObjectKey: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
-    const ownerId = await requireOwnerId(ctx);
+    const { ownerIds } = await requireOwnerContext(ctx);
     const input = commitSceneSaveArgsSchema.parse(args);
-    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerId);
-    assertValidSceneObjectKeys(ownerId, args.sceneId, input);
+    const scene = await requireOwnedScene(ctx.db, args.sceneId, ownerIds);
+    assertValidSceneObjectKeys(scene.ownerId, args.sceneId, input);
     // No-op when the content is unchanged: skipping the patch avoids a version
     // bump that would re-fire the getLibrary subscription and re-render clients.
     if (scene.contentHash === input.contentHash) {

@@ -1,7 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
 import { fetchQuery } from "convex/nextjs";
 import { makeFunctionReference } from "convex/server";
 import { z, ZodError } from "zod";
+
+import { getConvexAuthToken } from "@/lib/auth-server";
 
 type SceneStorageAccess = {
   storageOwnerId: string;
@@ -22,14 +23,6 @@ export type SceneStorageAuthResult =
 export async function requireSceneStorageAccess(
   sceneId: string,
 ): Promise<SceneStorageAuthResult> {
-  const { userId, getToken } = await auth();
-  if (!userId) {
-    return {
-      ok: false,
-      response: Response.json({ error: "Unauthorized" }, { status: 401 }),
-    };
-  }
-
   if (!process.env.NEXT_PUBLIC_CONVEX_URL) {
     return {
       ok: false,
@@ -40,14 +33,11 @@ export async function requireSceneStorageAccess(
     };
   }
 
-  const token = await getToken({ template: "convex" });
+  const token = await getConvexAuthToken();
   if (!token) {
     return {
       ok: false,
-      response: Response.json(
-        { error: "Storage authorization is not available" },
-        { status: 503 },
-      ),
+      response: Response.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
 
@@ -63,7 +53,7 @@ export async function requireSceneStorageAccess(
         response: Response.json({ error: "Scene not found" }, { status: 404 }),
       };
     }
-    return { ok: true, userId, access };
+    return { ok: true, userId: access.storageOwnerId, access };
   } catch {
     return {
       ok: false,

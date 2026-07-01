@@ -89,10 +89,7 @@ const LibraryContext = createContext<LibraryContextValue | null>(null);
 
 export const shouldUseRemoteData =
   process.env.NEXT_PUBLIC_LOCAL_DATA !== "1" &&
-  Boolean(
-    process.env.NEXT_PUBLIC_CONVEX_URL &&
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
-  );
+  Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
 const idSchema = z.string().min(1);
 

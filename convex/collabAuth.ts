@@ -31,6 +31,20 @@ export async function getUserId(ctx: {
   return identity?.subject ?? null;
 }
 
+async function getAuthorizedOwnerIds(
+  db: DatabaseReader,
+  userId: string | null,
+) {
+  if (!userId) {
+    return [];
+  }
+  const aliases = await db
+    .query("userOwnerAliases")
+    .withIndex("by_auth_user", (q) => q.eq("authUserId", userId))
+    .collect();
+  return Array.from(new Set([userId, ...aliases.map((alias) => alias.ownerId)]));
+}
+
 export type AuthorizedScene = {
   scene: Doc<"scenes">;
   ownerId: string;
@@ -55,7 +69,8 @@ export async function authorizeEdit(
     return null;
   }
   const userId = await getUserId(ctx);
-  if (userId && scene.ownerId === userId) {
+  const ownerIds = await getAuthorizedOwnerIds(ctx.db, userId);
+  if (ownerIds.includes(scene.ownerId)) {
     return { scene, ownerId: scene.ownerId, viaOwner: true, userId };
   }
   if (args.token) {

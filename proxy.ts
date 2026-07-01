@@ -1,39 +1,45 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
-// Note: /share/e is intentionally NOT protected — anonymous guests can join an
-// edit room via the share token. The token gates reads, and write routes
-// (upload/commit/duplicate) still require sign-in on their own.
-const isProtectedRoute = createRouteMatcher([
-  "/dashboard(.*)",
-  "/scenes(.*)",
-  "/api/scenes(.*)",
-]);
-const hasClerk = Boolean(
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
-);
+// /share/e is intentionally public. Shared write routes and scene storage
+// routes still re-check auth/ownership server-side.
+const protectedPrefixes = ["/dashboard", "/scenes", "/api/scenes"];
 
-export default clerkMiddleware(async (auth, req) => {
-  if (!hasClerk || process.env.NEXT_PUBLIC_LOCAL_DATA === "1") {
+function hasBetterAuthSession(req: NextRequest) {
+  return req.cookies
+    .getAll()
+    .some((cookie) => cookie.name.includes("session_token"));
+}
+
+function isProtectedPath(pathname: string) {
+  return protectedPrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+export default function proxy(req: NextRequest) {
+  if (
+    process.env.NEXT_PUBLIC_LOCAL_DATA === "1" ||
+    !process.env.NEXT_PUBLIC_CONVEX_URL
+  ) {
     return;
   }
-  // Signed-in users skip the landing page and go straight to their dashboard.
-  if (req.nextUrl.pathname === "/") {
-    const { userId } = await auth();
-    if (userId) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-    return;
+
+  const signedIn = hasBetterAuthSession(req);
+
+  if (req.nextUrl.pathname === "/" && signedIn) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
-  if (isProtectedRoute(req)) {
-    await auth.protect();
+
+  if (isProtectedPath(req.nextUrl.pathname) && !signedIn) {
+    const signInUrl = new URL("/sign-in", req.url);
+    signInUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
+    return NextResponse.redirect(signInUrl);
   }
-});
+}
 
 export const config = {
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
-    "/__clerk/(.*)",
   ],
 };
